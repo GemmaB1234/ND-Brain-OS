@@ -1426,6 +1426,10 @@ function App() {
           React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 14, margin: 0, lineHeight: 1.6 } }, rsdScenario.desc)
         ),
         React.createElement('button', { onClick: () => setRsdBreathing(true), style: { ...btn(C.teal, { width: '100%', padding: 14, fontSize: 15, marginBottom: 12 }) } }, '🌬️ Breathe first, then get my reality check'),
+        React.createElement('div', { style: { background: C.teal + '0d', border: `1px solid ${C.teal}33`, borderRadius: 12, padding: '10px 14px', marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center' } },
+          React.createElement('span', { style: { fontSize: 14 } }, '🤖'),
+          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, margin: 0, lineHeight: 1.5 } }, 'The AI reality check after breathing is coming soon — the breathing exercise works now and will soon be followed by a personalised response.')
+        ),
         React.createElement('div', { style: card({ cursor: 'pointer', background: C.purple + '18', borderColor: C.purple + '44' }), onClick: () => setAffirmIdx(i => (i + 1) % AFFIRMATIONS.length) },
           React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 11, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: 1 } }, 'Affirmation'),
           React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 14, lineHeight: 1.7, margin: 0 } }, AFFIRMATIONS[affirmIdx]),
@@ -1607,6 +1611,7 @@ function App() {
       rules: ["Why do people say fine when they don't mean it?", "When to reply to emails", "Why eye contact matters", "Reading the room"],
     };
     return React.createElement('div', null,
+      React.createElement(AIComingBanner, { desc: "This tab uses AI to decode neurotypical communication, translate your words for an NT audience, and explain unwritten social rules — with real nuance and context." }),
       React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto' } },
         modes.map(m => React.createElement('button', { key: m.id, onClick: () => setTranslateMode(m.id), style: pill(translateMode === m.id, C.pink) }, m.label))
       ),
@@ -1643,6 +1648,7 @@ function App() {
       { signal: "Quiet in group", misread: "Unhappy or excluded", reality: "Overwhelmed, processing, or introverted" },
     ];
     return React.createElement('div', null,
+      React.createElement(AIComingBanner, { desc: "This tab uses AI to decode a specific situation — a confusing email, something someone said, or body language you couldn't read. Paste it in and get a clear, honest breakdown." }),
       React.createElement('div', { style: { display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 16, paddingBottom: 4 } },
         contexts.map(c => React.createElement('button', { key: c.id, onClick: () => setDecodeContext(c.id), style: { ...pill(decodeContext === c.id, C.teal), whiteSpace: 'nowrap' } }, c.label))
       ),
@@ -1873,6 +1879,10 @@ function App() {
       }));
     }
     return React.createElement('div', null,
+      React.createElement('div', { style: { background: C.teal + '0d', border: `1px solid ${C.teal}33`, borderRadius: 12, padding: '10px 14px', marginBottom: 14, display: 'flex', gap: 10, alignItems: 'center' } },
+        React.createElement('span', { style: { fontSize: 16 } }, '🤖'),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, margin: 0, lineHeight: 1.5 } }, 'The "Break it down" AI button is coming soon — tasks and capture work now, AI step breakdowns are on the way.')
+      ),
       React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 12 } },
         React.createElement('input', { value: taskInput, onChange: e => setTaskInput(e.target.value), onKeyDown: e => e.key === 'Enter' && addTask(), placeholder: "Quick capture...", style: input({ flex: 1 }) }),
         React.createElement('button', { onClick: addTask, style: { ...btn(C.teal, { padding: '10px 16px' }) } }, '+')
@@ -1913,8 +1923,8 @@ function App() {
   function renderBrainDump() {
     const modes = [{ id: "sort", label: "📂 Sort it out" }, { id: "whatfirst", label: "🎯 What first?" }, { id: "feelings", label: "💙 Feelings first" }];
     return React.createElement('div', null,
+      React.createElement(AIComingBanner, { desc: "Brain Dump uses AI to take everything cluttering your head and sort it, prioritise it, or just hear you out. Type freely — it will make sense of it." }),
       React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 16 } },
-        modes.map(m => React.createElement('button', { key: m.id, onClick: () => setDumpMode(m.id), style: pill(dumpMode === m.id, C.teal) }, m.label))
       ),
       React.createElement('textarea', { value: dumpText, onChange: e => setDumpText(e.target.value), placeholder: "Dump everything that's in your head right now...", style: { ...textareaStyle({ height: 160, marginBottom: 8 }) } }),
       React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 12 } },
@@ -2643,21 +2653,7 @@ function App() {
 
       React.createElement('div', { style: card({ marginTop: 8 }) },
         React.createElement('h4', { style: { color: C.blue, fontFamily: 'Nunito', margin: '0 0 12px' } }, '🤖 AI Script Generator'),
-        React.createElement('input', { value: discDiag, onChange: e => setDiscDiag(e.target.value), placeholder: "Your diagnosis (e.g. ADHD, autism, dyslexia)", style: input({ marginBottom: 8 }) }),
-        React.createElement('input', { value: discTo, onChange: e => setDiscTo(e.target.value), placeholder: "Disclosing to (e.g. manager, partner, GP)", style: input({ marginBottom: 8 }) }),
-        React.createElement('div', { style: { display: 'flex', gap: 6, marginBottom: 8 } },
-          ["warm", "professional", "brief", "detailed"].map(t => React.createElement('button', { key: t, onClick: () => setDiscTone(t), style: pill(discTone === t, C.blue) }, t))
-        ),
-        React.createElement('textarea', { value: discContext, onChange: e => setDiscContext(e.target.value), placeholder: "Any extra context (optional)...", style: { ...textareaStyle({ height: 60, marginBottom: 10 }) } }),
-        React.createElement('button', { onClick: handleDisclosure, disabled: discLoading || !discDiag || !discTo, style: { ...btn(C.blue, { width: '100%', opacity: discLoading ? 0.7 : 1 }) } }, discLoading ? '✍️ Writing...' : '✍️ Generate my script'),
-        discResult && React.createElement('div', { style: { marginTop: 14 } },
-          discResult.script && React.createElement('div', { style: { background: C.blue + '11', border: `1px solid ${C.blue}33`, borderRadius: 12, padding: 14, marginBottom: 10 } },
-            React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.7, margin: 0 } }, discResult.script)
-          ),
-          discResult.key_points && React.createElement(AIBlock, { label: "Key points", value: discResult.key_points, color: C.blue }),
-          discResult.anticipate && React.createElement(AIBlock, { label: "They might say...", value: discResult.anticipate, color: C.purple }),
-          discResult.your_rights && React.createElement(AIBlock, { label: "Your rights", value: discResult.your_rights, color: C.teal })
-        )
+        React.createElement(AIComingBanner, { desc: "The AI script generator will create a personalised disclosure script based on your diagnosis, who you're telling, and the tone you want. It will also prepare you for common responses and remind you of your rights." }),
       ),
 
       React.createElement('div', { style: { textAlign: 'center', marginTop: 16, padding: '12px 0' } },
@@ -2839,6 +2835,22 @@ function App() {
       React.createElement('div', { style: { fontSize: 32, marginBottom: 8 } }, '🚀'),
       React.createElement('p', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, margin: '0 0 6px' } }, 'Coming soon'),
       React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: 0, lineHeight: 1.6 } }, `AI-powered ${feature} is coming in the next update of ND Brain OS. We're building it properly so it's secure and reliable for everyone.`)
+    );
+  }
+
+  function AIComingBanner({ feature, desc }) {
+    return React.createElement('div', { style: { background: `linear-gradient(135deg, ${C.teal}15, ${C.purple}10)`, border: `1.5px solid ${C.teal}44`, borderRadius: 16, padding: '18px 16px', marginBottom: 20 } },
+      React.createElement('div', { style: { display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 12 } },
+        React.createElement('div', { style: { fontSize: 28, flexShrink: 0 } }, '🤖'),
+        React.createElement('div', null,
+          React.createElement('p', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 4px' } }, 'AI feature — coming soon'),
+          React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 13, margin: 0, lineHeight: 1.6 } }, desc)
+        )
+      ),
+      React.createElement('div', { style: { background: C.card, borderRadius: 10, padding: '10px 12px' } },
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' } }, 'Why the wait?'),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, margin: 0, lineHeight: 1.6 } }, "We're building a secure backend so your conversations with the AI are private and protected. We don't want to rush it — this handles sensitive stuff and it needs to be done properly. Thank you for your patience 💙")
+      )
     );
   }
 
