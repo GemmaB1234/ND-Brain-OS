@@ -49,7 +49,10 @@ function uid() {
   return Math.random().toString(36).slice(2, 9);
 }
 
+const AI_ENABLED = false; // Set to true when API key is secured server-side
+
 async function callClaudeJSON(prompt, systemPrompt) {
+  if (!AI_ENABLED) return { __coming_soon: true };
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -681,6 +684,11 @@ function App() {
   const [user, setUser] = useState(null);
   const [authToken, setAuthToken] = useState(null);
   const [authChecked, setAuthChecked] = useState(false);
+  const [accountScreen, setAccountScreen] = useState(false); // show account settings
+  const [changePwOld, setChangePwOld] = useState("");
+  const [changePwNew, setChangePwNew] = useState("");
+  const [changePwMsg, setChangePwMsg] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [themeId, setThemeId] = useState("dark");
@@ -1435,7 +1443,8 @@ function App() {
         React.createElement('div', { style: { color: C.teal, fontSize: 32, animation: 'pulse 1s infinite' } }, '🧠'),
         React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito' } }, 'Getting your reality check...')
       ),
-      rsdAIResult && React.createElement('div', null,
+      rsdAIResult && rsdAIResult.__coming_soon && renderComingSoon("reality checks"),
+      rsdAIResult && !rsdAIResult.__coming_soon && React.createElement('div', null,
         rsdAIResult.grounding_phrase && React.createElement('div', { style: { background: gt(C.teal + '33', C.pink + '33'), border: `2px solid ${C.teal}44`, borderRadius: 20, padding: 20, textAlign: 'center', marginBottom: 16 } },
           React.createElement('p', { style: { fontSize: 20, fontFamily: 'Nunito', fontWeight: 800, color: C.text, margin: 0 } }, '"' + rsdAIResult.grounding_phrase + '"')
         ),
@@ -2825,6 +2834,109 @@ function App() {
     );
   }
 
+  function renderComingSoon(feature) {
+    return React.createElement('div', { style: { background: C.teal + '11', border: `1.5px solid ${C.teal}33`, borderRadius: 14, padding: '20px 16px', textAlign: 'center', margin: '12px 0' } },
+      React.createElement('div', { style: { fontSize: 32, marginBottom: 8 } }, '🚀'),
+      React.createElement('p', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, margin: '0 0 6px' } }, 'Coming soon'),
+      React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: 0, lineHeight: 1.6 } }, `AI-powered ${feature} is coming in the next update of ND Brain OS. We're building it properly so it's secure and reliable for everyone.`)
+    );
+  }
+
+  function renderAccount() {
+    return React.createElement('div', { style: { padding: 16, maxWidth: 480, margin: '0 auto' } },
+      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 } },
+        React.createElement('button', { onClick: () => setAccountScreen(false), style: { background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 20, padding: '6px 14px', color: C.muted, cursor: 'pointer', fontFamily: 'Nunito', fontSize: 13 } }, '← Back'),
+        React.createElement('h2', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 18, margin: 0 } }, 'Account')
+      ),
+
+      // User info
+      React.createElement('div', { style: { ...card({ marginBottom: 16 }) } },
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' } }, 'Signed in as'),
+        React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 700, fontSize: 15, margin: 0 } }, user?.email)
+      ),
+
+      // Change password
+      React.createElement('div', { style: { ...card({ marginBottom: 16 }) } },
+        React.createElement('p', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 14px' } }, '🔑 Change password'),
+        React.createElement('input', { type: 'password', placeholder: 'New password', value: changePwNew, onChange: e => setChangePwNew(e.target.value), style: { ...input({ marginBottom: 10 }) } }),
+        changePwMsg && React.createElement('p', { style: { color: changePwMsg.ok ? C.teal : C.pink, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 10px' } }, changePwMsg.text),
+        React.createElement('button', {
+          onClick: async () => {
+            if (!changePwNew || changePwNew.length < 6) { setChangePwMsg({ ok: false, text: 'Password must be at least 6 characters' }); return; }
+            const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, { method: 'PUT', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ password: changePwNew }) });
+            if (res.ok) { setChangePwMsg({ ok: true, text: 'Password updated ✓' }); setChangePwNew(""); }
+            else { setChangePwMsg({ ok: false, text: 'Could not update password — please try again' }); }
+          },
+          style: { ...btn(C.teal, { width: '100%' }) }
+        }, 'Update password')
+      ),
+
+      // Privacy policy link
+      React.createElement('div', { style: { ...card({ marginBottom: 16 }) } },
+        React.createElement('p', { style: { color: C.blue, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 8px' } }, '📋 Privacy & data'),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 12px', lineHeight: 1.5 } }, 'Your data is stored securely in Supabase (EU servers). We never sell or share your data.'),
+        React.createElement('button', { onClick: () => { setAccountScreen('privacy'); }, style: { ...btn(C.blue, { width: '100%' }) } }, 'Read our Privacy Policy')
+      ),
+
+      // Feedback
+      React.createElement('div', { style: { ...card({ marginBottom: 16 }) } },
+        React.createElement('p', { style: { color: C.purple, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 8px' } }, '💬 Feedback'),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 12px' } }, 'ND Brain OS is in beta. We\'d love to hear what you think.'),
+        React.createElement('a', { href: 'mailto:hello@wiredandwell.co.uk', style: { ...btn(C.purple, { width: '100%', display: 'block', textAlign: 'center', textDecoration: 'none' }) } }, 'Send feedback →')
+      ),
+
+      // Sign out
+      React.createElement('button', { onClick: handleSignOut, style: { ...btn(C.muted, { width: '100%', marginBottom: 16 }) } }, '→ Sign out'),
+
+      // Delete account
+      !deleteConfirm
+        ? React.createElement('button', { onClick: () => setDeleteConfirm(true), style: { background: 'transparent', border: `1px solid ${C.pink}44`, borderRadius: 12, padding: '10px', width: '100%', color: C.pink, fontFamily: 'Nunito', fontSize: 13, cursor: 'pointer' } }, 'Delete my account')
+        : React.createElement('div', { style: { background: C.pink + '11', border: `1.5px solid ${C.pink}`, borderRadius: 14, padding: 16 } },
+            React.createElement('p', { style: { color: C.pink, fontFamily: 'Nunito', fontWeight: 700, fontSize: 14, margin: '0 0 8px' } }, 'Are you sure?'),
+            React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 14px', lineHeight: 1.5 } }, 'This will permanently delete your account and all your data. This cannot be undone.'),
+            React.createElement('div', { style: { display: 'flex', gap: 8 } },
+              React.createElement('button', { onClick: () => setDeleteConfirm(false), style: { ...btn(C.muted, { flex: 1 }) } }, 'Cancel'),
+              React.createElement('button', {
+                onClick: async () => {
+                  await fetch(`${SUPABASE_URL}/auth/v1/user`, { method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${authToken}` } });
+                  handleSignOut();
+                },
+                style: { ...btn(C.pink, { flex: 1 }) }
+              }, 'Yes, delete')
+            )
+          ),
+
+      React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 11, textAlign: 'center', margin: '20px 0 0', lineHeight: 1.5 } }, 'ND Brain OS · Wired & Well Ltd · v1.0 beta')
+    );
+  }
+
+  function renderPrivacy() {
+    const section = (title, body) => React.createElement('div', { style: { marginBottom: 18 } },
+      React.createElement('p', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 14, margin: '0 0 6px' } }, title),
+      React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 13, margin: 0, lineHeight: 1.7 } }, body)
+    );
+    return React.createElement('div', { style: { padding: 16, maxWidth: 480, margin: '0 auto' } },
+      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 } },
+        React.createElement('button', { onClick: () => setAccountScreen('account'), style: { background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 20, padding: '6px 14px', color: C.muted, cursor: 'pointer', fontFamily: 'Nunito', fontSize: 13 } }, '← Back'),
+        React.createElement('h2', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 18, margin: 0 } }, 'Privacy Policy')
+      ),
+      React.createElement('div', { style: card() },
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, margin: '0 0 20px' } }, 'Last updated: June 2026 · Wired & Well Ltd'),
+        section("Who we are", "ND Brain OS is a product of Wired & Well Ltd. We build tools to support neurodivergent people. If you have questions about this policy, contact us at hello@wiredandwell.co.uk."),
+        section("What data we collect", "We collect your email address when you create an account. We store the data you enter into the app — including tasks, habits, mood check-ins, sensory ratings, and your safety plan. We do not collect any data you do not actively enter."),
+        section("How we use your data", "Your data is used solely to power your personal experience in ND Brain OS. We do not analyse, sell, share, or use your data for advertising. Your safety plan and mood data are private to you."),
+        section("Where your data is stored", "Your data is stored securely on Supabase servers located in the EU (Ireland). Supabase is GDPR compliant. Data is encrypted at rest and in transit."),
+        section("Who can see your data", "Only you can see your data. We use Row Level Security — meaning the database enforces that your data is only accessible with your account credentials. Wired & Well staff do not routinely access user data."),
+        section("AI features", "When AI features are enabled, the text you submit is sent to Anthropic's Claude API to generate a response. Anthropic's privacy policy applies to this data. We do not store the content of AI interactions beyond your session."),
+        section("Your rights", "You have the right to access, export, or delete your data at any time. You can delete your account from the Account screen — this permanently removes all your data. For data requests, contact hello@wiredandwell.co.uk."),
+        section("Cookies and tracking", "We do not use advertising cookies or third-party tracking. We may use anonymous analytics to understand how the app is used, but this data is never linked to your identity."),
+        section("Children", "ND Brain OS is intended for users aged 13 and over. If you are under 18, please ensure a parent or guardian has reviewed this policy."),
+        section("Changes to this policy", "We will notify users of significant changes to this policy by email or in-app notice. Continued use of the app after changes constitutes acceptance of the updated policy."),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, marginTop: 20, lineHeight: 1.5 } }, 'Questions? Email hello@wiredandwell.co.uk')
+      )
+    );
+  }
+
   function renderTab(tabId) {
     const map = {
       rsd: renderRSD,
@@ -2847,6 +2959,10 @@ function App() {
   // ── Main App render ────────────────────────────────────────────────────────
   const currentSection = section ? SECTIONS[section] : null;
   const currentSectionTabs = currentSection ? currentSection.tabs : [];
+
+  // Show account or privacy screen
+  if (accountScreen === 'account') return React.createElement('div', { style: { background: C.bg, minHeight: '100vh' } }, renderAccount());
+  if (accountScreen === 'privacy') return React.createElement('div', { style: { background: C.bg, minHeight: '100vh' } }, renderPrivacy());
 
   // Show loading while checking session
   if (!authChecked) return React.createElement('div', { style: { background: '#0a0a0f', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
@@ -2988,14 +3104,14 @@ function App() {
               ),
               React.createElement('span', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 9, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' } }, 'Simple')
             ),
-            // Sign out
+            // Account button
             React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 } },
               React.createElement('button', {
-                onClick: handleSignOut,
-                title: 'Sign out',
-                style: { width: 22, height: 22, borderRadius: '50%', border: `1.5px solid ${C.border}`, background: 'transparent', cursor: 'pointer', color: C.muted, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }
-              }, '→'),
-              React.createElement('span', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 9, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' } }, 'Out')
+                onClick: () => setAccountScreen('account'),
+                title: 'Account settings',
+                style: { width: 22, height: 22, borderRadius: '50%', border: `1.5px solid ${C.border}`, background: 'transparent', cursor: 'pointer', color: C.muted, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+              }, '👤'),
+              React.createElement('span', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 9, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' } }, 'Account')
             ),
             React.createElement('span', { style: { fontSize: 18 } }, tier.icon),
             React.createElement('span', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 14 } }, points),
