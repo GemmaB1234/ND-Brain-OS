@@ -1,6 +1,45 @@
 const { useState, useEffect, useRef, useCallback } = React;
 
 
+// ─── SUPABASE CLIENT ──────────────────────────────────────────────────────────
+
+const SUPABASE_URL = 'https://ahhgssocxiemxotqcqzz.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_eM1hDvbQNB6Ip_hktigGRw_5_CJrQU7';
+
+async function supabase(method, path, body, token) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method,
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${token || SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': method === 'POST' ? 'return=representation' : 'return=minimal',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok && res.status !== 404) {
+    const err = await res.text();
+    console.error('Supabase error:', err);
+  }
+  try { return await res.json(); } catch { return null; }
+}
+
+async function sbAuth(action, email, password) {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/${action}`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  return await res.json();
+}
+
+async function sbSignOut(token) {
+  await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${token}` },
+  });
+}
+
 // ND Brain OS — Wired & Well Ltd
 // Complete single-file React app
 
@@ -633,6 +672,16 @@ function NonogramGame({ C }) {
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 
 function App() {
+  // ── Auth state ─────────────────────────────────────────────────────────────
+  const [authScreen, setAuthScreen] = useState("login"); // login | signup
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [user, setUser] = useState(null);
+  const [authToken, setAuthToken] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+
   // ── State ──────────────────────────────────────────────────────────────────
   const [themeId, setThemeId] = useState("dark");
   const C = THEMES[themeId];
@@ -772,6 +821,89 @@ function App() {
     contact2Name: "", contact2How: "",
     safePlace: "", safeObject: "", safePhrase: "",
   });
+
+  // ── localStorage persistence ───────────────────────────────────────────────
+
+  // Load saved session on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('ndbrainos_session');
+      if (saved) {
+        const { token, userData } = JSON.parse(saved);
+        setAuthToken(token);
+        setUser(userData);
+        loadUserData(token);
+      }
+    } catch(e) {}
+    setAuthChecked(true);
+  }, []);
+
+  // Save session to localStorage when auth changes
+  useEffect(() => {
+    if (user && authToken) {
+      localStorage.setItem('ndbrainos_session', JSON.stringify({ token: authToken, userData: user }));
+    } else {
+      localStorage.removeItem('ndbrainos_session');
+    }
+  }, [user, authToken]);
+
+  async function loadUserData(token) {
+    try {
+      const profile = await supabase('GET', `profiles?id=eq.${user?.id || ''}&select=*`, null, token);
+      if (profile && profile[0]) {
+        if (profile[0].theme_id) setThemeId(profile[0].theme_id);
+        if (profile[0].plain_language !== undefined) setPlainLanguage(profile[0].plain_language);
+        if (profile[0].points) setPoints(profile[0].points);
+        if (profile[0].screen && profile[0].screen !== 'welcome') setScreen(profile[0].screen);
+      }
+      const taskData = await supabase('GET', `tasks?user_id=eq.${user?.id || ''}&order=created_at`, null, token);
+      if (taskData && taskData.length) setTasks(taskData.map(t => ({ id: t.id, text: t.text, tier: t.tier, done: t.done, steps: t.steps })));
+      const habitData = await supabase('GET', `habits?user_id=eq.${user?.id || ''}&order=created_at`, null, token);
+      if (habitData && habitData.length) setHabits(habitData.map(h => ({ id: h.id, emoji: h.emoji, text: h.text, done: h.done, lastDone: h.last_done })));
+      const moodData = await supabase('GET', `mood_history?user_id=eq.${user?.id || ''}&order=created_at.desc&limit=30`, null, token);
+      if (moodData && moodData.length) setMoodHistory(moodData.map(m => ({ mood: m.mood, note: m.note, date: m.created_at })));
+      const spData = await supabase('GET', `safety_plans?user_id=eq.${user?.id || ''}&select=*`, null, token);
+      if (spData && spData[0]) { setSafetyPlan(spData[0].plan); setSafetyPlanSaved(spData[0].saved); setSafetyPlanEditing(!spData[0].saved); }
+    } catch(e) { console.log('Load error', e); }
+  }
+
+  async function handleSignUp() {
+    setAuthLoading(true); setAuthError(null);
+    const res = await sbAuth('signup', authEmail, authPassword);
+    if (res.error) { setAuthError(res.error.message); setAuthLoading(false); return; }
+    if (res.access_token) { setAuthToken(res.access_token); setUser(res.user); setScreen('welcome'); }
+    setAuthLoading(false);
+  }
+
+  async function handleLogin() {
+    setAuthLoading(true); setAuthError(null);
+    const res = await sbAuth('token?grant_type=password', authEmail, authPassword);
+    if (res.error) { setAuthError(res.error.message); setAuthLoading(false); return; }
+    if (res.access_token) {
+      setAuthToken(res.access_token);
+      setUser(res.user);
+      await loadUserData(res.access_token);
+      setScreen('home');
+    }
+    setAuthLoading(false);
+  }
+
+  async function handleSignOut() {
+    if (authToken) await sbSignOut(authToken);
+    setUser(null); setAuthToken(null); setScreen('welcome');
+    localStorage.removeItem('ndbrainos_session');
+  }
+
+  // Auto-save to Supabase when key data changes
+  useEffect(() => {
+    if (!user || !authToken) return;
+    const t = setTimeout(async () => {
+      try {
+        await supabase('PATCH', `profiles?id=eq.${user.id}`, { theme_id: themeId, plain_language: plainLanguage, points, screen }, authToken);
+      } catch(e) {}
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [themeId, plainLanguage, points, screen, user, authToken]);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -2716,6 +2848,38 @@ function App() {
   const currentSection = section ? SECTIONS[section] : null;
   const currentSectionTabs = currentSection ? currentSection.tabs : [];
 
+  // Show loading while checking session
+  if (!authChecked) return React.createElement('div', { style: { background: '#0a0a0f', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+    React.createElement('p', { style: { color: '#666', fontFamily: 'Nunito', fontSize: 16 } }, 'Loading...')
+  );
+
+  // Show login/signup if not authenticated
+  if (!user) return React.createElement('div', { style: { background: '#0a0a0f', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 } },
+    React.createElement('div', { style: { width: '100%', maxWidth: 380 } },
+      React.createElement('div', { style: { textAlign: 'center', marginBottom: 32 } },
+        React.createElement('h1', { style: { fontFamily: 'Nunito', fontWeight: 900, fontSize: 28, background: 'linear-gradient(135deg, #00e5cc, #ff6b9d, #6c8eff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', margin: '0 0 8px' } }, 'ND Brain OS'),
+        React.createElement('p', { style: { color: '#666', fontFamily: 'Nunito Sans', fontSize: 14 } }, 'Your neurodivergent support system')
+      ),
+      React.createElement('div', { style: { background: '#111118', border: '1.5px solid #1a1a2a', borderRadius: 20, padding: 28 } },
+        React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 24 } },
+          ['login', 'signup'].map(s => React.createElement('button', {
+            key: s, onClick: () => { setAuthScreen(s); setAuthError(null); },
+            style: { flex: 1, background: authScreen === s ? '#00e5cc22' : 'transparent', border: `1.5px solid ${authScreen === s ? '#00e5cc' : '#1a1a2a'}`, borderRadius: 12, padding: '10px', color: authScreen === s ? '#00e5cc' : '#666', fontFamily: 'Nunito', fontWeight: 700, fontSize: 14, cursor: 'pointer' }
+          }, s === 'login' ? 'Log in' : 'Sign up'))
+        ),
+        React.createElement('input', { type: 'email', placeholder: 'Email address', value: authEmail, onChange: e => setAuthEmail(e.target.value), style: { width: '100%', background: '#0a0a0f', border: '1.5px solid #1a1a2a', borderRadius: 12, padding: '12px 16px', color: '#fff', fontFamily: 'Nunito', fontSize: 14, marginBottom: 12, outline: 'none' } }),
+        React.createElement('input', { type: 'password', placeholder: 'Password', value: authPassword, onChange: e => setAuthPassword(e.target.value), onKeyDown: e => e.key === 'Enter' && (authScreen === 'login' ? handleLogin() : handleSignUp()), style: { width: '100%', background: '#0a0a0f', border: '1.5px solid #1a1a2a', borderRadius: 12, padding: '12px 16px', color: '#fff', fontFamily: 'Nunito', fontSize: 14, marginBottom: 16, outline: 'none' } }),
+        authError && React.createElement('p', { style: { color: '#ff6b9d', fontFamily: 'Nunito Sans', fontSize: 13, marginBottom: 12, lineHeight: 1.4 } }, authError),
+        React.createElement('button', {
+          onClick: authScreen === 'login' ? handleLogin : handleSignUp,
+          disabled: authLoading || !authEmail || !authPassword,
+          style: { width: '100%', background: authLoading ? '#1a1a2a' : 'linear-gradient(135deg, #00e5cc, #6c8eff)', border: 'none', borderRadius: 12, padding: 14, color: authLoading ? '#666' : '#000', fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, cursor: authLoading ? 'not-allowed' : 'pointer' }
+        }, authLoading ? 'Please wait...' : authScreen === 'login' ? 'Log in →' : 'Create account →'),
+        authScreen === 'signup' && React.createElement('p', { style: { color: '#444', fontFamily: 'Nunito Sans', fontSize: 11, textAlign: 'center', marginTop: 12, lineHeight: 1.5 } }, 'By signing up you agree to our terms. Your data is stored securely and never shared.')
+      )
+    )
+  );
+
   return React.createElement('div', {
     style: { minHeight: '100vh', background: C.bg, color: C.text, fontFamily: 'Nunito Sans, sans-serif', position: 'relative', overflow: 'hidden' }
   },
@@ -2823,6 +2987,15 @@ function App() {
                 React.createElement('div', { style: { width: 14, height: 14, borderRadius: '50%', background: plainLanguage ? C.teal : C.muted, transition: 'all 0.2s' } })
               ),
               React.createElement('span', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 9, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' } }, 'Simple')
+            ),
+            // Sign out
+            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 } },
+              React.createElement('button', {
+                onClick: handleSignOut,
+                title: 'Sign out',
+                style: { width: 22, height: 22, borderRadius: '50%', border: `1.5px solid ${C.border}`, background: 'transparent', cursor: 'pointer', color: C.muted, fontSize: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }
+              }, '→'),
+              React.createElement('span', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 9, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' } }, 'Out')
             ),
             React.createElement('span', { style: { fontSize: 18 } }, tier.icon),
             React.createElement('span', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 14 } }, points),
