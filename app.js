@@ -151,7 +151,7 @@ const MOOD_OPTIONS = [
   { id: "flat", icon: "🪨", label: "Flat/Numb", color: "#a78bfa", desc: "Low motivation, disconnected, flatlined", needs: ["Movement — even just standing up and stretching", "Change your environment (go outside briefly)", "Eat or drink something — check the basics first", "Try one tiny task to restart the engine"], links: [{ label: "→ Dopamine Fixes", tab: "dopamine" }, { label: "→ Tasks", tab: "tasks" }] },
   { id: "anxious", icon: "⚡", label: "Anxious", color: "#ffe566", desc: "Heart racing, mind spiralling, on edge", needs: ["4-4-6 breathing exercise right now", "Write down exactly what you're worried about", "Physical movement to discharge the adrenaline", "Remind yourself: you have survived every hard moment so far"], links: [{ label: "→ Breathing", tab: "toolkit" }, { label: "→ Brain Dump", tab: "braindump" }] },
   { id: "frustrated", icon: "🔥", label: "Frustrated", color: "#ff9966", desc: "Angry, irritated, at the limit", needs: ["Physical release: walk, shake, stamp your feet", "Identify the real source — often it's overload not the trigger", "Give yourself permission to feel this fully for 2 mins", "Then decide: act or release"], links: [{ label: "→ RSD Check", tab: "rsd" }, { label: "→ Toolkit", tab: "toolkit" }] },
-  { id: "okay", icon: "🌤️", label: "Okay Actually", color: "#a8ff78", desc: "Neutral, managing, getting by", needs: ["This is a good moment to do one thing off your list", "Check in on your basics: food, water, movement?", "Can you do something kind for tomorrow-you?", "Notice this moment — okay is underrated"], links: [{ label: "→ Tasks", tab: "tasks" }, { label: "→ Habits", tab: "habits" }] },
+  { id: "okay", icon: "🌤️", label: "Okay Actually", color: "#a8ff78", desc: "Neutral, managing, getting by", needs: ["This is a good moment to do one thing off your list", "Check in on your basics: food, water, movement?", "Can you do something kind for tomorrow-you?", "Notice this moment — okay is underrated"], links: [{ label: "→ Tasks", tab: "tasks" }, { label: "→ Life Stuff", tab: "habits" }] },
   { id: "good", icon: "✨", label: "Pretty Good", color: "#00ffcc", desc: "Genuinely okay, energy available", needs: ["Ride this window — do the thing you've been avoiding", "Connect with someone you care about", "Do something creative while you have the fuel", "Bank some wins for later"], links: [{ label: "→ Tasks", tab: "tasks" }, { label: "→ Dopamine", tab: "dopamine" }] },
   { id: "hyperfocus", icon: "🎯", label: "In Hyperfocus", color: "#ff6ef7", desc: "Locked in, time-blind, deep in it", needs: ["Set a timer NOW so you remember to eat/drink", "Tell someone nearby so they can check on you", "The thing you're doing: is it what needs doing?", "Plan your exit — hyperfocus ends suddenly"], links: [{ label: "→ Body Double", tab: "toolkit" }, { label: "→ Tasks", tab: "tasks" }] },
   { id: "shutdown", icon: "🔋", label: "Shutdown Mode", color: "#8888aa", desc: "Can't talk, can't think, system offline", needs: ["This is your nervous system protecting you — honour it", "Find somewhere quiet and dim if possible", "You don't have to explain this to anyone right now", "Rest. Not as a reward. Just because you need it."], links: [{ label: "→ Sensory", tab: "sensory" }, { label: "→ Toolkit", tab: "toolkit" }] },
@@ -758,7 +758,7 @@ function App() {
   const [dumpResult, setDumpResult] = useState(null);
   const [dumpLoading, setDumpLoading] = useState(false);
 
-  // Habits state
+  // Life Stuff state
   const [habits, setHabits] = useState([
     { id: uid(), emoji: "🧺", text: "Put washing on", done: false, lastDone: null },
     { id: uid(), emoji: "👕", text: "Move washing to dryer", done: false, lastDone: null },
@@ -1218,7 +1218,7 @@ function App() {
       tabs: [
         { id: "tasks", icon: "✦", name: plainLanguage ? "What do I need to do?" : "Tasks", desc: plainLanguage ? "Write down what needs doing and break it into small steps" : "Capture what needs doing and break it into steps" },
         { id: "braindump", icon: "🧠", name: plainLanguage ? "Empty my head" : "Brain Dump", desc: plainLanguage ? "Get everything out of your brain — we'll help you sort it" : "Empty your head — sort it, prioritise it, or just feel heard" },
-        { id: "habits", icon: "🔁", name: plainLanguage ? "Daily life stuff" : "Habits", desc: plainLanguage ? "The everyday things that are easy to forget" : "The daily life admin that's easy to lose track of" },
+        { id: "habits", icon: "🔁", name: plainLanguage ? "Daily life stuff" : "Life Stuff", desc: plainLanguage ? "The everyday things that are easy to forget" : "The daily life stuff that's easy to lose track of" },
       ]
     },
     regulate: {
@@ -1246,7 +1246,7 @@ function App() {
 
   const HOME_CARDS = [
     { id: "communication", icon: "💬", label: "Communication", tagline: plainLanguage ? "When people are hard to understand — or you're hard to understand" : "When people are confusing or you're struggling to be understood", tags: plainLanguage ? ["Everyone hates me", "Help me understand", "What did that mean?", "Why I avoid things"] : ["RSD", "Translate", "Decode", "PDA"], color: C.pink },
-    { id: "mybrain", icon: "🧠", label: "My Brain", tagline: plainLanguage ? "Get things out of your head and work out what to do" : "Capture thoughts, break down tasks and stay on top of the basics", tags: plainLanguage ? ["What do I need to do?", "Empty my head", "Daily life stuff"] : ["Tasks", "Brain Dump", "Habits"], color: C.teal },
+    { id: "mybrain", icon: "🧠", label: "My Brain", tagline: plainLanguage ? "Get things out of your head and work out what to do" : "Capture thoughts, break down tasks and stay on top of the basics", tags: plainLanguage ? ["What do I need to do?", "Empty my head", "Daily life stuff"] : ["Tasks", "Brain Dump", "Life Stuff"], color: C.teal },
     { id: "regulate", icon: "⚡", label: "Regulate", tagline: plainLanguage ? "When your body or brain feels too much right now" : "When your nervous system needs support right now", tags: plainLanguage ? ["How am I feeling?", "Is my body overwhelmed?", "Brain needs a boost", "Help me calm down"] : ["Mood", "Sensory", "Dopamine", "Toolkit"], color: C.yellow },
     { id: "aboutme", icon: "💙", label: "About Me", tagline: plainLanguage ? "How to explain yourself to other people" : "Scripts and language to explain yourself to others — on your terms", tags: plainLanguage ? ["How do I explain myself?"] : ["Disclosure"], color: C.blue },
     { id: "safetyplan", icon: "🛟", label: "Safety Plan", tagline: plainLanguage ? "Your personal plan for when things get really hard" : "Build your personal crisis plan when you're calm — so it's there when you're not", tags: plainLanguage ? ["Meltdown", "Too much", "Crisis"] : ["Meltdown", "Overwhelm", "Crisis"], color: C.purple },
@@ -1314,7 +1314,7 @@ function App() {
       {
         icon: "🧠", title: "My Brain",
         sub: "Capture, organise, and actually follow through",
-        body: "Quick-capture tasks and sort them by urgency. Brain dump everything cluttering your head and let AI sort it. Track the invisible life admin that neurotypical people somehow just do.",
+        body: "Quick-capture tasks and sort them by urgency. Brain dump everything cluttering your head and let AI sort it. Track the invisible life stuff that neurotypical people somehow just do.",
       },
       {
         icon: "⚡", title: "Regulate",
@@ -1957,7 +1957,7 @@ function App() {
   function renderHabits() {
     function completeHabit(id) {
       setHabits(hs => hs.map(h => h.id === id ? { ...h, done: true, lastDone: Date.now() } : h));
-      awardPoints(5, "Habit done. That's the invisible work, stacked up. 💙");
+      awardPoints(5, "Done! That's the invisible work, stacked up. 💙");
     }
     function daysAgo(ts) {
       if (!ts) return null;
@@ -1982,7 +1982,7 @@ function App() {
         ),
         nextTier && React.createElement('p', { style: { color: C.muted, fontSize: 11, fontFamily: 'Nunito', margin: '6px 0 0', textAlign: 'right' } }, nextTier.min - points + ' pts to ' + nextTier.icon + ' ' + nextTier.name)
       ),
-      React.createElement('h4', { style: { color: C.teal, fontFamily: 'Nunito', margin: '0 0 12px' } }, '🔁 Life Admin'),
+      React.createElement('h4', { style: { color: C.teal, fontFamily: 'Nunito', margin: '0 0 12px' } }, '🔁 Life Stuff'),
       active.map(h => React.createElement('div', { key: h.id, style: { ...card({ marginBottom: 8, padding: 12 }) } },
         editingHabitId === h.id
           ? React.createElement('div', null,
@@ -2028,7 +2028,7 @@ function App() {
           HABIT_EMOJIS.map(e => React.createElement('button', { key: e, onClick: () => setHabitEmoji(e), style: { background: e === habitEmoji ? C.teal + '33' : 'transparent', border: `1px solid ${e === habitEmoji ? C.teal : C.border}`, borderRadius: 8, padding: '4px 6px', cursor: 'pointer', fontSize: 16 } }, e))
         ),
         React.createElement('div', { style: { display: 'flex', gap: 8 } },
-          React.createElement('input', { value: habitText, onChange: e => setHabitText(e.target.value), onKeyDown: e => e.key === 'Enter' && addHabit(), placeholder: "Habit name...", style: input({ flex: 1 }) }),
+          React.createElement('input', { value: habitText, onChange: e => setHabitText(e.target.value), onKeyDown: e => e.key === 'Enter' && addHabit(), placeholder: "Add something...", style: input({ flex: 1 }) }),
           React.createElement('button', { onClick: addHabit, style: btn(C.teal) }, '+')
         )
       ),
@@ -3157,7 +3157,7 @@ function App() {
               [
                 { icon: '🌡️', label: 'Mood check-in', section: 'regulate', tab: 'mood', color: C.yellow },
                 { icon: '👁️', label: 'Sensory check', section: 'regulate', tab: 'sensory', color: C.blue },
-                { icon: '🔁', label: 'Daily basics', section: 'mybrain', tab: 'habits', color: C.teal },
+                { icon: '🔁', label: 'Life stuff', section: 'mybrain', tab: 'habits', color: C.teal },
                 { icon: '🛟', label: 'Safety plan', section: 'safetyplan', tab: 'safetyplan', color: C.purple },
               ].map(item => React.createElement('button', {
                 key: item.tab, onClick: () => { navigateTo(item.section, item.tab); setBottomNav(item.section === 'regulate' ? 'helpme' : item.section === 'mybrain' ? 'mystuff' : item.section === 'communication' ? 'people' : 'more'); },
@@ -3208,7 +3208,7 @@ function App() {
               )
             : React.createElement('div', null,
                 React.createElement('h2', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 900, fontSize: 22, margin: '0 0 4px' } }, '🧠 My stuff'),
-                React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 20px' } }, 'Tasks, thoughts and daily basics'),
+                React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 20px' } }, 'Tasks, thoughts and life stuff'),
                 SECTIONS.mybrain.tabs.map(tab => React.createElement('button', {
                   key: tab.id, onClick: () => navigateTo('mybrain', tab.id),
                   style: { display: 'flex', alignItems: 'center', gap: 16, width: '100%', background: C.card, border: `1.5px solid ${C.border}`, borderRadius: 18, padding: '18px', marginBottom: 10, cursor: 'pointer', textAlign: 'left' }
