@@ -882,21 +882,35 @@ function App() {
 
   async function handleSignUp() {
     setAuthLoading(true); setAuthError(null);
-    const res = await sbAuth('signup', authEmail, authPassword);
-    if (res.error) { setAuthError(res.error.message); setAuthLoading(false); return; }
-    if (res.access_token) { setAuthToken(res.access_token); setUser(res.user); setScreen('welcome'); }
+    try {
+      const res = await sbAuth('signup', authEmail, authPassword);
+      if (res.error) { setAuthError(res.error.message || 'Sign up failed — please try again'); setAuthLoading(false); return; }
+      if (res.access_token) {
+        setAuthToken(res.access_token); setUser(res.user); setScreen('welcome');
+      } else {
+        setAuthError('Could not create account — please try again');
+      }
+    } catch(e) {
+      setAuthError('Could not connect — please check your internet connection');
+    }
     setAuthLoading(false);
   }
 
   async function handleLogin() {
     setAuthLoading(true); setAuthError(null);
-    const res = await sbAuth('token?grant_type=password', authEmail, authPassword);
-    if (res.error) { setAuthError(res.error.message); setAuthLoading(false); return; }
-    if (res.access_token) {
-      setAuthToken(res.access_token);
-      setUser(res.user);
-      await loadUserData(res.access_token);
-      setScreen('home');
+    try {
+      const res = await sbAuth('token?grant_type=password', authEmail, authPassword);
+      if (res.error) { setAuthError(res.error.message || 'Login failed — please check your email and password'); setAuthLoading(false); return; }
+      if (res.access_token) {
+        setAuthToken(res.access_token);
+        setUser(res.user);
+        try { await loadUserData(res.access_token); } catch(e) { console.log('Load data error', e); }
+        setScreen('home');
+      } else {
+        setAuthError('Something went wrong — please try again');
+      }
+    } catch(e) {
+      setAuthError('Could not connect — please check your internet connection');
     }
     setAuthLoading(false);
   }
