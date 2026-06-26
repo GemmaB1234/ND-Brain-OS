@@ -26,18 +26,23 @@ async function supabase(method, path, body, token) {
 }
 
 async function sbAuth(action, email, password) {
-  const res = await fetch(`${SUPABASE_URL}/auth/v1/${action}`, {
+  // New publishable key format uses /auth/v1/ endpoints
+  const endpoint = action === 'signup' 
+    ? `${SUPABASE_URL}/auth/v1/signup`
+    : `${SUPABASE_URL}/auth/v1/token?grant_type=password`;
+  
+  const res = await fetch(endpoint, {
     method: 'POST',
     headers: { 
-      'apikey': SUPABASE_KEY, 
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
       'Content-Type': 'application/json',
-      'X-Client-Info': 'steady-app'
     },
-    body: JSON.stringify({ email, password, gotrue_meta_security: {} }),
+    body: JSON.stringify({ email, password }),
   });
-  const data = await res.json();
-  console.log('Auth response:', JSON.stringify(data));
-  return data;
+  const text = await res.text();
+  console.log('Auth status:', res.status, 'Response:', text);
+  try { return JSON.parse(text); } catch { return { error: { message: text } }; }
 }
 
 async function sbSignOut(token) {
@@ -906,7 +911,7 @@ function App() {
     setAuthLoading(true); setAuthError(null);
     try {
       const res = await sbAuth('token?grant_type=password', authEmail, authPassword);
-      if (res.error) { setAuthError(res.error.message || res.msg || 'Login failed — please check your email and password'); setAuthLoading(false); return; }
+      if (res.error) { setAuthError(res.error.message || res.error_description || res.msg || JSON.stringify(res.error)); setAuthLoading(false); return; }
       if (res.access_token) {
         setAuthToken(res.access_token);
         setUser(res.user);
