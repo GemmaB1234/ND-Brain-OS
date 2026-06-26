@@ -1,4 +1,45 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+const { useState, useEffect, useRef, useCallback } = React;
+
+
+
+// ─── SUPABASE CLIENT ──────────────────────────────────────────────────────────
+
+const SUPABASE_URL = 'https://ahhgssocxiemxotqcqzz.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_eM1hDvbQNB6Ip_hktigGRw_5_CJrQU7';
+
+async function supabase(method, path, body, token) {
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    method,
+    headers: {
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${token || SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+      'Prefer': method === 'POST' ? 'return=representation' : 'return=minimal',
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  if (!res.ok && res.status !== 404) {
+    const err = await res.text();
+    console.error('Supabase error:', err);
+  }
+  try { return await res.json(); } catch { return null; }
+}
+
+async function sbAuth(action, email, password) {
+  const res = await fetch(`${SUPABASE_URL}/auth/v1/${action}`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password }),
+  });
+  return await res.json();
+}
+
+async function sbSignOut(token) {
+  await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${token}` },
+  });
+}
 
 // ND Brain OS — Wired & Well Ltd
 // Complete single-file React app
@@ -9,7 +50,10 @@ function uid() {
   return Math.random().toString(36).slice(2, 9);
 }
 
+const AI_ENABLED = false; // Set to true when API key is secured server-side
+
 async function callClaudeJSON(prompt, systemPrompt) {
+  if (!AI_ENABLED) return { __coming_soon: true };
   const res = await fetch("https://api.anthropic.com/v1/messages", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -631,7 +675,22 @@ function NonogramGame({ C }) {
 
 // ─── MAIN APP ─────────────────────────────────────────────────────────────────
 
-export default function App() {
+function App() {
+  // ── Auth state ─────────────────────────────────────────────────────────────
+  const [authScreen, setAuthScreen] = useState("login"); // login | signup
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authError, setAuthError] = useState(null);
+  const [authLoading, setAuthLoading] = useState(false);
+  const [user, setUser] = useState(null);
+  const [authToken, setAuthToken] = useState(null);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [accountScreen, setAccountScreen] = useState(false); // show account settings
+  const [changePwOld, setChangePwOld] = useState("");
+  const [changePwNew, setChangePwNew] = useState("");
+  const [changePwMsg, setChangePwMsg] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(false);
+
   // ── State ──────────────────────────────────────────────────────────────────
   const [themeId, setThemeId] = useState("dark");
   const C = THEMES[themeId];
@@ -642,8 +701,9 @@ export default function App() {
   const [wizardAnswer, setWizardAnswer] = useState(null);
   const [screen, setScreen] = useState("welcome"); // welcome | home | section
   const [welcomeSlide, setWelcomeSlide] = useState(0);
-  const [section, setSection] = useState(null); // communication | mybrain | regulate | aboutme
+  const [section, setSection] = useState(null);
   const [activeTab, setActiveTab] = useState(null);
+  const [bottomNav, setBottomNav] = useState('checkin'); // checkin | helpme | mystuff | people | more
   const [points, setPoints] = useState(0);
   const [toast, setToast] = useState(null);
   const [toastMsgIdx, setToastMsgIdx] = useState(0);
@@ -731,6 +791,9 @@ export default function App() {
 
   // Toolkit state
   const [openTool, setOpenTool] = useState(null);
+  const [pinnedTools, setPinnedTools] = useState([]); // [{section, tab, icon, label, color}]
+  const [lastUsed, setLastUsed] = useState(null); // {section, tab, icon, label, color}
+  const [showAllSections, setShowAllSections] = useState(false);
   const [bodyDoubleTime, setBodyDoubleTime] = useState(25);
   const [bodyDoubleRunning, setBodyDoubleRunning] = useState(false);
   const [bodyDoubleLeft, setBodyDoubleLeft] = useState(0);
@@ -771,6 +834,97 @@ export default function App() {
     contact2Name: "", contact2How: "",
     safePlace: "", safeObject: "", safePhrase: "",
   });
+
+  // ── localStorage persistence ───────────────────────────────────────────────
+
+  // Load saved session on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('ndbrainos_session');
+      if (saved) {
+        const { token, userData } = JSON.parse(saved);
+        setAuthToken(token);
+        setUser(userData);
+        loadUserData(token);
+      }
+    } catch(e) {}
+    setAuthChecked(true);
+  }, []);
+
+  // Save session to localStorage when auth changes
+  useEffect(() => {
+    if (user && authToken) {
+      localStorage.setItem('ndbrainos_session', JSON.stringify({ token: authToken, userData: user }));
+    } else {
+      localStorage.removeItem('ndbrainos_session');
+    }
+  }, [user, authToken]);
+
+  async function loadUserData(token) {
+    try {
+      const profile = await supabase('GET', `profiles?id=eq.${user?.id || ''}&select=*`, null, token);
+      if (profile && profile[0]) {
+        if (profile[0].theme_id) setThemeId(profile[0].theme_id);
+        if (profile[0].plain_language !== undefined) setPlainLanguage(profile[0].plain_language);
+        if (profile[0].points) setPoints(profile[0].points);
+        if (profile[0].screen && profile[0].screen !== 'welcome') setScreen(profile[0].screen);
+      }
+      const taskData = await supabase('GET', `tasks?user_id=eq.${user?.id || ''}&order=created_at`, null, token);
+      if (taskData && taskData.length) setTasks(taskData.map(t => ({ id: t.id, text: t.text, tier: t.tier, done: t.done, steps: t.steps })));
+      const habitData = await supabase('GET', `habits?user_id=eq.${user?.id || ''}&order=created_at`, null, token);
+      if (habitData && habitData.length) setHabits(habitData.map(h => ({ id: h.id, emoji: h.emoji, text: h.text, done: h.done, lastDone: h.last_done })));
+      const moodData = await supabase('GET', `mood_history?user_id=eq.${user?.id || ''}&order=created_at.desc&limit=30`, null, token);
+      if (moodData && moodData.length) setMoodHistory(moodData.map(m => ({ mood: m.mood, note: m.note, date: m.created_at })));
+      const spData = await supabase('GET', `safety_plans?user_id=eq.${user?.id || ''}&select=*`, null, token);
+      if (spData && spData[0]) { setSafetyPlan(spData[0].plan); setSafetyPlanSaved(spData[0].saved); setSafetyPlanEditing(!spData[0].saved); }
+    } catch(e) { console.log('Load error', e); }
+  }
+
+  async function handleSignUp() {
+    setAuthLoading(true); setAuthError(null);
+    const res = await sbAuth('signup', authEmail, authPassword);
+    if (res.error) { setAuthError(res.error.message); setAuthLoading(false); return; }
+    if (res.access_token) { setAuthToken(res.access_token); setUser(res.user); setScreen('welcome'); }
+    setAuthLoading(false);
+  }
+
+  async function handleLogin() {
+    setAuthLoading(true); setAuthError(null);
+    const res = await sbAuth('token?grant_type=password', authEmail, authPassword);
+    if (res.error) { setAuthError(res.error.message); setAuthLoading(false); return; }
+    if (res.access_token) {
+      setAuthToken(res.access_token);
+      setUser(res.user);
+      await loadUserData(res.access_token);
+      setScreen('home');
+    }
+    setAuthLoading(false);
+  }
+
+  async function handleSignOut() {
+    if (authToken) await sbSignOut(authToken);
+    setUser(null); setAuthToken(null); setScreen('welcome');
+    localStorage.removeItem('ndbrainos_session');
+  }
+
+  // Auto-save to Supabase when key data changes
+  useEffect(() => {
+    if (!user || !authToken) return;
+    const t = setTimeout(async () => {
+      try {
+        await supabase('PATCH', `profiles?id=eq.${user.id}`, { theme_id: themeId, plain_language: plainLanguage, points, screen }, authToken);
+      } catch(e) {}
+    }, 1000);
+    return () => clearTimeout(t);
+  }, [themeId, plainLanguage, points, screen, user, authToken]);
+
+  function navigateTo(sectionId, tabId) {
+    const sec = SECTIONS[sectionId];
+    const tab = sec?.tabs.find(t => t.id === tabId);
+    if (tab) setLastUsed({ section: sectionId, tab: tabId, icon: tab.icon, label: tab.name, color: sec.color });
+    setSection(sectionId);
+    setActiveTab(tabId);
+  }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -1285,6 +1439,10 @@ export default function App() {
           React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 14, margin: 0, lineHeight: 1.6 } }, rsdScenario.desc)
         ),
         React.createElement('button', { onClick: () => setRsdBreathing(true), style: { ...btn(C.teal, { width: '100%', padding: 14, fontSize: 15, marginBottom: 12 }) } }, '🌬️ Breathe first, then get my reality check'),
+        React.createElement('div', { style: { background: C.teal + '0d', border: `1px solid ${C.teal}33`, borderRadius: 12, padding: '10px 14px', marginBottom: 12, display: 'flex', gap: 10, alignItems: 'center' } },
+          React.createElement('span', { style: { fontSize: 14 } }, '🤖'),
+          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, margin: 0, lineHeight: 1.5 } }, 'The AI reality check after breathing is coming soon — the breathing exercise works now and will soon be followed by a personalised response.')
+        ),
         React.createElement('div', { style: card({ cursor: 'pointer', background: C.purple + '18', borderColor: C.purple + '44' }), onClick: () => setAffirmIdx(i => (i + 1) % AFFIRMATIONS.length) },
           React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 11, margin: '0 0 6px', textTransform: 'uppercase', letterSpacing: 1 } }, 'Affirmation'),
           React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 14, lineHeight: 1.7, margin: 0 } }, AFFIRMATIONS[affirmIdx]),
@@ -1302,7 +1460,8 @@ export default function App() {
         React.createElement('div', { style: { color: C.teal, fontSize: 32, animation: 'pulse 1s infinite' } }, '🧠'),
         React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito' } }, 'Getting your reality check...')
       ),
-      rsdAIResult && React.createElement('div', null,
+      rsdAIResult && rsdAIResult.__coming_soon && renderComingSoon("reality checks"),
+      rsdAIResult && !rsdAIResult.__coming_soon && React.createElement('div', null,
         rsdAIResult.grounding_phrase && React.createElement('div', { style: { background: gt(C.teal + '33', C.pink + '33'), border: `2px solid ${C.teal}44`, borderRadius: 20, padding: 20, textAlign: 'center', marginBottom: 16 } },
           React.createElement('p', { style: { fontSize: 20, fontFamily: 'Nunito', fontWeight: 800, color: C.text, margin: 0 } }, '"' + rsdAIResult.grounding_phrase + '"')
         ),
@@ -1465,6 +1624,7 @@ export default function App() {
       rules: ["Why do people say fine when they don't mean it?", "When to reply to emails", "Why eye contact matters", "Reading the room"],
     };
     return React.createElement('div', null,
+      React.createElement(AIComingBanner, { desc: "This tab uses AI to decode neurotypical communication, translate your words for an NT audience, and explain unwritten social rules — with real nuance and context." }),
       React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto' } },
         modes.map(m => React.createElement('button', { key: m.id, onClick: () => setTranslateMode(m.id), style: pill(translateMode === m.id, C.pink) }, m.label))
       ),
@@ -1501,6 +1661,7 @@ export default function App() {
       { signal: "Quiet in group", misread: "Unhappy or excluded", reality: "Overwhelmed, processing, or introverted" },
     ];
     return React.createElement('div', null,
+      React.createElement(AIComingBanner, { desc: "This tab uses AI to decode a specific situation — a confusing email, something someone said, or body language you couldn't read. Paste it in and get a clear, honest breakdown." }),
       React.createElement('div', { style: { display: 'flex', gap: 8, overflowX: 'auto', marginBottom: 16, paddingBottom: 4 } },
         contexts.map(c => React.createElement('button', { key: c.id, onClick: () => setDecodeContext(c.id), style: { ...pill(decodeContext === c.id, C.teal), whiteSpace: 'nowrap' } }, c.label))
       ),
@@ -1731,6 +1892,10 @@ export default function App() {
       }));
     }
     return React.createElement('div', null,
+      React.createElement('div', { style: { background: C.teal + '0d', border: `1px solid ${C.teal}33`, borderRadius: 12, padding: '10px 14px', marginBottom: 14, display: 'flex', gap: 10, alignItems: 'center' } },
+        React.createElement('span', { style: { fontSize: 16 } }, '🤖'),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, margin: 0, lineHeight: 1.5 } }, 'The "Break it down" AI button is coming soon — tasks and capture work now, AI step breakdowns are on the way.')
+      ),
       React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 12 } },
         React.createElement('input', { value: taskInput, onChange: e => setTaskInput(e.target.value), onKeyDown: e => e.key === 'Enter' && addTask(), placeholder: "Quick capture...", style: input({ flex: 1 }) }),
         React.createElement('button', { onClick: addTask, style: { ...btn(C.teal, { padding: '10px 16px' }) } }, '+')
@@ -1771,8 +1936,8 @@ export default function App() {
   function renderBrainDump() {
     const modes = [{ id: "sort", label: "📂 Sort it out" }, { id: "whatfirst", label: "🎯 What first?" }, { id: "feelings", label: "💙 Feelings first" }];
     return React.createElement('div', null,
+      React.createElement(AIComingBanner, { desc: "Brain Dump uses AI to take everything cluttering your head and sort it, prioritise it, or just hear you out. Type freely — it will make sense of it." }),
       React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 16 } },
-        modes.map(m => React.createElement('button', { key: m.id, onClick: () => setDumpMode(m.id), style: pill(dumpMode === m.id, C.teal) }, m.label))
       ),
       React.createElement('textarea', { value: dumpText, onChange: e => setDumpText(e.target.value), placeholder: "Dump everything that's in your head right now...", style: { ...textareaStyle({ height: 160, marginBottom: 8 }) } }),
       React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', marginBottom: 12 } },
@@ -2501,21 +2666,7 @@ export default function App() {
 
       React.createElement('div', { style: card({ marginTop: 8 }) },
         React.createElement('h4', { style: { color: C.blue, fontFamily: 'Nunito', margin: '0 0 12px' } }, '🤖 AI Script Generator'),
-        React.createElement('input', { value: discDiag, onChange: e => setDiscDiag(e.target.value), placeholder: "Your diagnosis (e.g. ADHD, autism, dyslexia)", style: input({ marginBottom: 8 }) }),
-        React.createElement('input', { value: discTo, onChange: e => setDiscTo(e.target.value), placeholder: "Disclosing to (e.g. manager, partner, GP)", style: input({ marginBottom: 8 }) }),
-        React.createElement('div', { style: { display: 'flex', gap: 6, marginBottom: 8 } },
-          ["warm", "professional", "brief", "detailed"].map(t => React.createElement('button', { key: t, onClick: () => setDiscTone(t), style: pill(discTone === t, C.blue) }, t))
-        ),
-        React.createElement('textarea', { value: discContext, onChange: e => setDiscContext(e.target.value), placeholder: "Any extra context (optional)...", style: { ...textareaStyle({ height: 60, marginBottom: 10 }) } }),
-        React.createElement('button', { onClick: handleDisclosure, disabled: discLoading || !discDiag || !discTo, style: { ...btn(C.blue, { width: '100%', opacity: discLoading ? 0.7 : 1 }) } }, discLoading ? '✍️ Writing...' : '✍️ Generate my script'),
-        discResult && React.createElement('div', { style: { marginTop: 14 } },
-          discResult.script && React.createElement('div', { style: { background: C.blue + '11', border: `1px solid ${C.blue}33`, borderRadius: 12, padding: 14, marginBottom: 10 } },
-            React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.7, margin: 0 } }, discResult.script)
-          ),
-          discResult.key_points && React.createElement(AIBlock, { label: "Key points", value: discResult.key_points, color: C.blue }),
-          discResult.anticipate && React.createElement(AIBlock, { label: "They might say...", value: discResult.anticipate, color: C.purple }),
-          discResult.your_rights && React.createElement(AIBlock, { label: "Your rights", value: discResult.your_rights, color: C.teal })
-        )
+        React.createElement(AIComingBanner, { desc: "The AI script generator will create a personalised disclosure script based on your diagnosis, who you're telling, and the tone you want. It will also prepare you for common responses and remind you of your rights." }),
       ),
 
       React.createElement('div', { style: { textAlign: 'center', marginTop: 16, padding: '12px 0' } },
@@ -2692,6 +2843,125 @@ export default function App() {
     );
   }
 
+  function renderComingSoon(feature) {
+    return React.createElement('div', { style: { background: C.teal + '11', border: `1.5px solid ${C.teal}33`, borderRadius: 14, padding: '20px 16px', textAlign: 'center', margin: '12px 0' } },
+      React.createElement('div', { style: { fontSize: 32, marginBottom: 8 } }, '🚀'),
+      React.createElement('p', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, margin: '0 0 6px' } }, 'Coming soon'),
+      React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: 0, lineHeight: 1.6 } }, `AI-powered ${feature} is coming in the next update of ND Brain OS. We're building it properly so it's secure and reliable for everyone.`)
+    );
+  }
+
+  function AIComingBanner({ feature, desc }) {
+    return React.createElement('div', { style: { background: `linear-gradient(135deg, ${C.teal}15, ${C.purple}10)`, border: `1.5px solid ${C.teal}44`, borderRadius: 16, padding: '18px 16px', marginBottom: 20 } },
+      React.createElement('div', { style: { display: 'flex', gap: 12, alignItems: 'flex-start', marginBottom: 12 } },
+        React.createElement('div', { style: { fontSize: 28, flexShrink: 0 } }, '🤖'),
+        React.createElement('div', null,
+          React.createElement('p', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 4px' } }, 'AI feature — coming soon'),
+          React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 13, margin: 0, lineHeight: 1.6 } }, desc)
+        )
+      ),
+      React.createElement('div', { style: { background: C.card, borderRadius: 10, padding: '10px 12px' } },
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' } }, 'Why the wait?'),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, margin: 0, lineHeight: 1.6 } }, "We're building a secure backend so your conversations with the AI are private and protected. We don't want to rush it — this handles sensitive stuff and it needs to be done properly. Thank you for your patience 💙")
+      )
+    );
+  }
+
+  function renderAccount() {
+    return React.createElement('div', { style: { padding: 16, maxWidth: 480, margin: '0 auto' } },
+      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 } },
+        React.createElement('button', { onClick: () => setAccountScreen(false), style: { background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 20, padding: '6px 14px', color: C.muted, cursor: 'pointer', fontFamily: 'Nunito', fontSize: 13 } }, '← Back'),
+        React.createElement('h2', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 18, margin: 0 } }, 'Account')
+      ),
+
+      // User info
+      React.createElement('div', { style: { ...card({ marginBottom: 16 }) } },
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' } }, 'Signed in as'),
+        React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 700, fontSize: 15, margin: 0 } }, user?.email)
+      ),
+
+      // Change password
+      React.createElement('div', { style: { ...card({ marginBottom: 16 }) } },
+        React.createElement('p', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 14px' } }, '🔑 Change password'),
+        React.createElement('input', { type: 'password', placeholder: 'New password', value: changePwNew, onChange: e => setChangePwNew(e.target.value), style: { ...input({ marginBottom: 10 }) } }),
+        changePwMsg && React.createElement('p', { style: { color: changePwMsg.ok ? C.teal : C.pink, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 10px' } }, changePwMsg.text),
+        React.createElement('button', {
+          onClick: async () => {
+            if (!changePwNew || changePwNew.length < 6) { setChangePwMsg({ ok: false, text: 'Password must be at least 6 characters' }); return; }
+            const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, { method: 'PUT', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ password: changePwNew }) });
+            if (res.ok) { setChangePwMsg({ ok: true, text: 'Password updated ✓' }); setChangePwNew(""); }
+            else { setChangePwMsg({ ok: false, text: 'Could not update password — please try again' }); }
+          },
+          style: { ...btn(C.teal, { width: '100%' }) }
+        }, 'Update password')
+      ),
+
+      // Privacy policy link
+      React.createElement('div', { style: { ...card({ marginBottom: 16 }) } },
+        React.createElement('p', { style: { color: C.blue, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 8px' } }, '📋 Privacy & data'),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 12px', lineHeight: 1.5 } }, 'Your data is stored securely in Supabase (EU servers). We never sell or share your data.'),
+        React.createElement('button', { onClick: () => { setAccountScreen('privacy'); }, style: { ...btn(C.blue, { width: '100%' }) } }, 'Read our Privacy Policy')
+      ),
+
+      // Feedback
+      React.createElement('div', { style: { ...card({ marginBottom: 16 }) } },
+        React.createElement('p', { style: { color: C.purple, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 8px' } }, '💬 Feedback'),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 12px' } }, 'ND Brain OS is in beta. We\'d love to hear what you think.'),
+        React.createElement('a', { href: 'mailto:hello@wiredandwell.co.uk', style: { ...btn(C.purple, { width: '100%', display: 'block', textAlign: 'center', textDecoration: 'none' }) } }, 'Send feedback →')
+      ),
+
+      // Sign out
+      React.createElement('button', { onClick: handleSignOut, style: { ...btn(C.muted, { width: '100%', marginBottom: 16 }) } }, '→ Sign out'),
+
+      // Delete account
+      !deleteConfirm
+        ? React.createElement('button', { onClick: () => setDeleteConfirm(true), style: { background: 'transparent', border: `1px solid ${C.pink}44`, borderRadius: 12, padding: '10px', width: '100%', color: C.pink, fontFamily: 'Nunito', fontSize: 13, cursor: 'pointer' } }, 'Delete my account')
+        : React.createElement('div', { style: { background: C.pink + '11', border: `1.5px solid ${C.pink}`, borderRadius: 14, padding: 16 } },
+            React.createElement('p', { style: { color: C.pink, fontFamily: 'Nunito', fontWeight: 700, fontSize: 14, margin: '0 0 8px' } }, 'Are you sure?'),
+            React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 14px', lineHeight: 1.5 } }, 'This will permanently delete your account and all your data. This cannot be undone.'),
+            React.createElement('div', { style: { display: 'flex', gap: 8 } },
+              React.createElement('button', { onClick: () => setDeleteConfirm(false), style: { ...btn(C.muted, { flex: 1 }) } }, 'Cancel'),
+              React.createElement('button', {
+                onClick: async () => {
+                  await fetch(`${SUPABASE_URL}/auth/v1/user`, { method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${authToken}` } });
+                  handleSignOut();
+                },
+                style: { ...btn(C.pink, { flex: 1 }) }
+              }, 'Yes, delete')
+            )
+          ),
+
+      React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 11, textAlign: 'center', margin: '20px 0 0', lineHeight: 1.5 } }, 'ND Brain OS · Wired & Well Ltd · v1.0 beta')
+    );
+  }
+
+  function renderPrivacy() {
+    const section = (title, body) => React.createElement('div', { style: { marginBottom: 18 } },
+      React.createElement('p', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 14, margin: '0 0 6px' } }, title),
+      React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 13, margin: 0, lineHeight: 1.7 } }, body)
+    );
+    return React.createElement('div', { style: { padding: 16, maxWidth: 480, margin: '0 auto' } },
+      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 24 } },
+        React.createElement('button', { onClick: () => setAccountScreen('account'), style: { background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 20, padding: '6px 14px', color: C.muted, cursor: 'pointer', fontFamily: 'Nunito', fontSize: 13 } }, '← Back'),
+        React.createElement('h2', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 18, margin: 0 } }, 'Privacy Policy')
+      ),
+      React.createElement('div', { style: card() },
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, margin: '0 0 20px' } }, 'Last updated: June 2026 · Wired & Well Ltd'),
+        section("Who we are", "ND Brain OS is a product of Wired & Well Ltd. We build tools to support neurodivergent people. If you have questions about this policy, contact us at hello@wiredandwell.co.uk."),
+        section("What data we collect", "We collect your email address when you create an account. We store the data you enter into the app — including tasks, habits, mood check-ins, sensory ratings, and your safety plan. We do not collect any data you do not actively enter."),
+        section("How we use your data", "Your data is used solely to power your personal experience in ND Brain OS. We do not analyse, sell, share, or use your data for advertising. Your safety plan and mood data are private to you."),
+        section("Where your data is stored", "Your data is stored securely on Supabase servers located in the EU (Ireland). Supabase is GDPR compliant. Data is encrypted at rest and in transit."),
+        section("Who can see your data", "Only you can see your data. We use Row Level Security — meaning the database enforces that your data is only accessible with your account credentials. Wired & Well staff do not routinely access user data."),
+        section("AI features", "When AI features are enabled, the text you submit is sent to Anthropic's Claude API to generate a response. Anthropic's privacy policy applies to this data. We do not store the content of AI interactions beyond your session."),
+        section("Your rights", "You have the right to access, export, or delete your data at any time. You can delete your account from the Account screen — this permanently removes all your data. For data requests, contact hello@wiredandwell.co.uk."),
+        section("Cookies and tracking", "We do not use advertising cookies or third-party tracking. We may use anonymous analytics to understand how the app is used, but this data is never linked to your identity."),
+        section("Children", "ND Brain OS is intended for users aged 13 and over. If you are under 18, please ensure a parent or guardian has reviewed this policy."),
+        section("Changes to this policy", "We will notify users of significant changes to this policy by email or in-app notice. Continued use of the app after changes constitutes acceptance of the updated policy."),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, marginTop: 20, lineHeight: 1.5 } }, 'Questions? Email hello@wiredandwell.co.uk')
+      )
+    );
+  }
+
   function renderTab(tabId) {
     const map = {
       rsd: renderRSD,
@@ -2714,6 +2984,42 @@ export default function App() {
   // ── Main App render ────────────────────────────────────────────────────────
   const currentSection = section ? SECTIONS[section] : null;
   const currentSectionTabs = currentSection ? currentSection.tabs : [];
+
+  // Show account or privacy screen
+  if (accountScreen === 'account') return React.createElement('div', { style: { background: C.bg, minHeight: '100vh' } }, renderAccount());
+  if (accountScreen === 'privacy') return React.createElement('div', { style: { background: C.bg, minHeight: '100vh' } }, renderPrivacy());
+
+  // Show loading while checking session
+  if (!authChecked) return React.createElement('div', { style: { background: '#0a0a0f', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center' } },
+    React.createElement('p', { style: { color: '#666', fontFamily: 'Nunito', fontSize: 16 } }, 'Loading...')
+  );
+
+  // Show login/signup if not authenticated
+  if (!user) return React.createElement('div', { style: { background: '#0a0a0f', minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 } },
+    React.createElement('div', { style: { width: '100%', maxWidth: 380 } },
+      React.createElement('div', { style: { textAlign: 'center', marginBottom: 32 } },
+        React.createElement('h1', { style: { fontFamily: 'Nunito', fontWeight: 900, fontSize: 28, background: 'linear-gradient(135deg, #00e5cc, #ff6b9d, #6c8eff)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', margin: '0 0 8px' } }, 'ND Brain OS'),
+        React.createElement('p', { style: { color: '#666', fontFamily: 'Nunito Sans', fontSize: 14 } }, 'Your neurodivergent support system')
+      ),
+      React.createElement('div', { style: { background: '#111118', border: '1.5px solid #1a1a2a', borderRadius: 20, padding: 28 } },
+        React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 24 } },
+          ['login', 'signup'].map(s => React.createElement('button', {
+            key: s, onClick: () => { setAuthScreen(s); setAuthError(null); },
+            style: { flex: 1, background: authScreen === s ? '#00e5cc22' : 'transparent', border: `1.5px solid ${authScreen === s ? '#00e5cc' : '#1a1a2a'}`, borderRadius: 12, padding: '10px', color: authScreen === s ? '#00e5cc' : '#666', fontFamily: 'Nunito', fontWeight: 700, fontSize: 14, cursor: 'pointer' }
+          }, s === 'login' ? 'Log in' : 'Sign up'))
+        ),
+        React.createElement('input', { type: 'email', placeholder: 'Email address', value: authEmail, onChange: e => setAuthEmail(e.target.value), style: { width: '100%', background: '#0a0a0f', border: '1.5px solid #1a1a2a', borderRadius: 12, padding: '12px 16px', color: '#fff', fontFamily: 'Nunito', fontSize: 14, marginBottom: 12, outline: 'none' } }),
+        React.createElement('input', { type: 'password', placeholder: 'Password', value: authPassword, onChange: e => setAuthPassword(e.target.value), onKeyDown: e => e.key === 'Enter' && (authScreen === 'login' ? handleLogin() : handleSignUp()), style: { width: '100%', background: '#0a0a0f', border: '1.5px solid #1a1a2a', borderRadius: 12, padding: '12px 16px', color: '#fff', fontFamily: 'Nunito', fontSize: 14, marginBottom: 16, outline: 'none' } }),
+        authError && React.createElement('p', { style: { color: '#ff6b9d', fontFamily: 'Nunito Sans', fontSize: 13, marginBottom: 12, lineHeight: 1.4 } }, authError),
+        React.createElement('button', {
+          onClick: authScreen === 'login' ? handleLogin : handleSignUp,
+          disabled: authLoading || !authEmail || !authPassword,
+          style: { width: '100%', background: authLoading ? '#1a1a2a' : 'linear-gradient(135deg, #00e5cc, #6c8eff)', border: 'none', borderRadius: 12, padding: 14, color: authLoading ? '#666' : '#000', fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, cursor: authLoading ? 'not-allowed' : 'pointer' }
+        }, authLoading ? 'Please wait...' : authScreen === 'login' ? 'Log in →' : 'Create account →'),
+        authScreen === 'signup' && React.createElement('p', { style: { color: '#444', fontFamily: 'Nunito Sans', fontSize: 11, textAlign: 'center', marginTop: 12, lineHeight: 1.5 } }, 'By signing up you agree to our terms. Your data is stored securely and never shared.')
+      )
+    )
+  );
 
   return React.createElement('div', {
     style: { minHeight: '100vh', background: C.bg, color: C.text, fontFamily: 'Nunito Sans, sans-serif', position: 'relative', overflow: 'hidden' }
@@ -2785,227 +3091,218 @@ export default function App() {
     ),
 
     // Main content
-    React.createElement('div', { style: { position: 'relative', zIndex: 1, maxWidth: 680, margin: '0 auto', padding: '0 0 40px' } },
+    React.createElement('div', { style: { position: 'relative', zIndex: 1, maxWidth: 480, margin: '0 auto', paddingBottom: 80 } },
 
-      // ── HEADER ───────────────────────────────────────────────────────────
-      React.createElement('div', { style: { padding: '16px 16px 0', marginBottom: 8 } },
-        React.createElement('div', { style: { display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 } },
-          React.createElement('h1', { style: { fontFamily: 'Nunito', fontWeight: 900, fontSize: 22, margin: 0, background: `linear-gradient(135deg, ${C.teal}, ${C.pink}, ${C.blue})`, backgroundSize: '200% 200%', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text', animation: 'shimmer 4s ease infinite' } }, 'ND Brain OS'),
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 8 } },
-            // Palette toggle button
-            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 } },
-              React.createElement('button', {
-                onClick: () => setThemePanelOpen(o => !o),
-                title: 'Change theme',
-                style: {
-                  width: 22, height: 22, borderRadius: '50%', border: `1.5px solid ${C.border}`,
-                  background: `conic-gradient(${C.teal} 0deg 90deg, ${C.pink} 90deg 180deg, ${C.yellow} 180deg 270deg, ${C.blue} 270deg 360deg)`,
-                  cursor: 'pointer', flexShrink: 0, padding: 0,
-                  boxShadow: themePanelOpen ? `0 0 0 2px ${C.teal}` : 'none',
-                  transition: 'box-shadow 0.2s',
-                }
-              }),
-              React.createElement('span', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 9, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' } }, 'Theme')
-            ),
-            // Plain language toggle
-            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 } },
-              React.createElement('button', {
-                onClick: () => setPlainLanguage(p => !p),
-                title: 'Plain language mode',
-                style: {
-                  width: 36, height: 22, borderRadius: 11, border: `1.5px solid ${plainLanguage ? C.teal : C.border}`,
-                  background: plainLanguage ? C.teal + '33' : 'transparent',
-                  cursor: 'pointer', padding: '0 3px', display: 'flex', alignItems: 'center',
-                  justifyContent: plainLanguage ? 'flex-end' : 'flex-start', transition: 'all 0.2s',
-                }
-              },
-                React.createElement('div', { style: { width: 14, height: 14, borderRadius: '50%', background: plainLanguage ? C.teal : C.muted, transition: 'all 0.2s' } })
-              ),
-              React.createElement('span', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 9, fontWeight: 600, letterSpacing: 0.5, textTransform: 'uppercase' } }, 'Simple')
-            ),
-            React.createElement('span', { style: { fontSize: 18 } }, tier.icon),
-            React.createElement('span', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 14 } }, points),
-          )
-        ),
-        React.createElement('div', { style: { background: C.border + '44', borderRadius: 8, height: 3, marginBottom: 8, overflow: 'hidden' } },
-          React.createElement('div', { style: { height: '100%', width: tierPct + '%', background: gt(C.teal, C.pink), borderRadius: 8, transition: 'width 0.5s' } })
-        ),
-        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 12, margin: '0 0 6px', minHeight: 16 } }, '💡 ' + TIPS[tipIdx]),
-        // Theme panel — only shown when toggled open
-        themePanelOpen && React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', paddingBottom: 4, paddingTop: 2 } },
-          Object.values(THEMES).map(t => React.createElement('button', {
-            key: t.id,
-            onClick: () => { setThemeId(t.id); setThemePanelOpen(false); },
-            style: {
-              display: 'flex', alignItems: 'center', gap: 6,
-              background: themeId === t.id ? C.teal + '22' : C.card,
-              border: `1.5px solid ${themeId === t.id ? C.teal : C.border}`,
-              borderRadius: 20, padding: '5px 12px', cursor: 'pointer',
-              color: themeId === t.id ? C.teal : C.muted,
-              fontFamily: 'Nunito', fontWeight: themeId === t.id ? 700 : 400, fontSize: 12,
-              transition: 'all 0.15s',
-            }
-          }, t.label))
+      // ── HEADER ─────────────────────────────────────────────────────────────
+      React.createElement('div', { style: { padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
+        React.createElement('h1', { style: { fontFamily: 'Nunito', fontWeight: 900, fontSize: 20, margin: 0, background: `linear-gradient(135deg, ${C.teal}, ${C.pink}, ${C.blue})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' } }, 'ND Brain OS'),
+        React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
+          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 } },
+            React.createElement('button', { onClick: () => setThemePanelOpen(o => !o), style: { width: 22, height: 22, borderRadius: '50%', border: `1.5px solid ${C.border}`, background: `conic-gradient(${C.teal} 0deg 90deg, ${C.pink} 90deg 180deg, ${C.yellow} 180deg 270deg, ${C.blue} 270deg 360deg)`, cursor: 'pointer', padding: 0, boxShadow: themePanelOpen ? `0 0 0 2px ${C.teal}` : 'none' } }),
+            React.createElement('span', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 8, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.5 } }, 'Theme')
+          ),
+          React.createElement('button', { onClick: () => setAccountScreen('account'), style: { background: 'transparent', border: `1.5px solid ${C.border}`, borderRadius: 20, padding: '5px 10px', color: C.muted, cursor: 'pointer', fontFamily: 'Nunito', fontSize: 12, fontWeight: 600 } }, '👤 Account')
         )
       ),
 
-      // ── HOME or SECTION ──────────────────────────────────────────────────
-      !section && React.createElement('div', { style: { padding: '8px 16px' } },
-
-        // "What do I need?" wizard
-        !needsWizard && React.createElement('button', {
-          onClick: () => { setNeedsWizard(true); setWizardStep(0); setWizardAnswer(null); },
-          style: {
-            display: 'flex', alignItems: 'center', gap: 14, width: '100%', textAlign: 'left',
-            background: gt(C.teal + '22', C.pink + '18', 135),
-            border: `2px solid ${C.teal}55`, borderRadius: 18, padding: '18px', marginBottom: 16, cursor: 'pointer',
-          }
-        },
-          React.createElement('div', { style: { fontSize: 32 } }, '🧭'),
-          React.createElement('div', { style: { flex: 1 } },
-            React.createElement('div', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 900, fontSize: 17, marginBottom: 3 } }, "I don't know where to start"),
-            React.createElement('div', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13 } }, "Answer one question and we'll take you straight there")
-          ),
-          React.createElement('span', { style: { color: C.teal, fontSize: 22, opacity: 0.7 } }, '›')
-        ),
-
-        // Wizard open
-        needsWizard && !wizardAnswer && React.createElement('div', { style: { ...card({ marginBottom: 16, borderColor: C.teal + '44' }) } },
-          React.createElement('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 } },
-            React.createElement('p', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, margin: 0 } }, WIZARD_STEPS[0].q),
-            React.createElement('button', { onClick: () => setNeedsWizard(false), style: { background: 'transparent', border: 'none', color: C.muted, cursor: 'pointer', fontSize: 18, padding: 4 } }, '✕')
-          ),
-          React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
-            WIZARD_STEPS[0].options.map(o => React.createElement('button', {
-              key: o.next, onClick: () => setWizardAnswer(o.next),
-              style: {
-                display: 'flex', alignItems: 'center', gap: 12, textAlign: 'left',
-                background: C.card, border: `1.5px solid ${C.border}`,
-                borderRadius: 14, padding: '14px 16px', cursor: 'pointer',
-                fontFamily: 'Nunito', fontWeight: 700, fontSize: 15, color: C.text,
-              }
-            }, o.label))
-          )
-        ),
-
-        // Wizard result
-        needsWizard && wizardAnswer && React.createElement('div', { style: { ...card({ marginBottom: 16, borderColor: C.teal + '55', background: gt(C.teal + '12', C.pink + '08', 135) }) } },
-          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 12, margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: 1 } }, '✦ We think you need'),
-          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 } },
-            React.createElement('div', { style: { fontSize: 36 } }, WIZARD_ROUTES[wizardAnswer].icon),
-            React.createElement('div', null,
-              React.createElement('div', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 900, fontSize: 18, marginBottom: 3 } }, WIZARD_ROUTES[wizardAnswer].label),
-              React.createElement('div', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13 } }, WIZARD_ROUTES[wizardAnswer].desc)
-            )
-          ),
-          React.createElement('div', { style: { display: 'flex', gap: 8 } },
-            React.createElement('button', {
-              onClick: () => {
-                const r = WIZARD_ROUTES[wizardAnswer];
-                setSection(r.section); setActiveTab(r.tab);
-                if (r.openTool) setOpenTool(r.openTool);
-                setNeedsWizard(false); setWizardAnswer(null);
-              },
-              style: { ...btn(C.teal, { flex: 1, padding: 14, fontSize: 15 }) }
-            }, 'Take me there →'),
-            React.createElement('button', {
-              onClick: () => { setWizardAnswer(null); },
-              style: { ...btn(C.muted, { padding: '14px 16px', fontSize: 13 }) }
-            }, '← Back')
-          )
-        ),
-
-        HOME_CARDS.map(hc => {
-          const isSafety = hc.id === 'safetyplan';
-          return React.createElement('button', {
-            key: hc.id,
-            onClick: () => { setSection(hc.id); setActiveTab(SECTIONS[hc.id].tabs[0].id); },
-            style: {
-              display: 'flex', alignItems: isSafety ? 'flex-start' : 'center', gap: 16, width: '100%',
-              background: isSafety ? gt(hc.color + '18', C.blue + '10', 135) : hc.color + '0e',
-              border: `${isSafety ? '2px' : '1.5px'} solid ${hc.color}${isSafety ? '55' : '33'}`,
-              borderRadius: 18, padding: isSafety ? '18px 18px' : '16px 18px', textAlign: 'left',
-              cursor: 'pointer', transition: 'all 0.2s', marginBottom: 10,
-            }
-          },
-            React.createElement('div', { style: {
-              width: isSafety ? 56 : 52, height: isSafety ? 56 : 52,
-              borderRadius: 14, flexShrink: 0, marginTop: isSafety ? 2 : 0,
-              background: hc.color + '22', border: `1.5px solid ${hc.color}44`,
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: isSafety ? 28 : 26,
-            } }, hc.icon),
-            React.createElement('div', { style: { flex: 1, minWidth: 0 } },
-              React.createElement('div', { style: { color: hc.color, fontFamily: 'Nunito', fontWeight: 800, fontSize: isSafety ? 17 : 16, marginBottom: 3 } }, hc.label),
-              React.createElement('div', { style: { color: isSafety ? C.text : C.muted, fontFamily: 'Nunito Sans', fontSize: 12, lineHeight: 1.5, marginBottom: 8 } }, hc.tagline),
-              isSafety && React.createElement('div', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 11, lineHeight: 1.5, marginBottom: 8, fontStyle: 'italic' } },
-                'Fill it in once when you\'re calm — it becomes your emergency card for when you\'re not.'
-              ),
-              React.createElement('div', { style: { display: 'flex', gap: 5, flexWrap: 'wrap' } },
-                hc.tags.map(tag => React.createElement('span', { key: tag, style: {
-                  background: hc.color + '18', border: `1px solid ${hc.color}33`,
-                  borderRadius: 20, padding: '2px 8px',
-                  color: hc.color, fontFamily: 'Nunito', fontWeight: 700, fontSize: 11,
-                } }, tag))
-              )
-            ),
-            React.createElement('span', { style: { color: hc.color, fontSize: 18, opacity: 0.5, flexShrink: 0 } }, '›')
-          );
-        })
+      // Theme panel
+      themePanelOpen && React.createElement('div', { style: { padding: '0 16px 12px', display: 'flex', gap: 6, flexWrap: 'wrap' } },
+        Object.values(THEMES).map(t => React.createElement('button', { key: t.id, onClick: () => { setThemeId(t.id); setThemePanelOpen(false); }, style: { background: themeId === t.id ? C.teal + '22' : C.card, border: `1.5px solid ${themeId === t.id ? C.teal : C.border}`, borderRadius: 20, padding: '5px 12px', cursor: 'pointer', color: themeId === t.id ? C.teal : C.muted, fontFamily: 'Nunito', fontWeight: themeId === t.id ? 700 : 400, fontSize: 12 } }, t.label))
       ),
 
-      section && React.createElement('div', null,
-        // Section header
-        React.createElement('div', { style: { padding: '8px 16px 0', display: 'flex', alignItems: 'center', gap: 10 } },
-          React.createElement('button', { onClick: () => { setSection(null); setActiveTab(null); }, style: { background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 20, padding: '6px 14px', color: C.muted, cursor: 'pointer', fontFamily: 'Nunito', fontSize: 13 } }, '← Home'),
-          React.createElement('h2', { style: { color: currentSection.color, fontFamily: 'Nunito', fontWeight: 800, fontSize: 18, margin: 0 } }, currentSection.label)
+      // ── TAB CONTENT ────────────────────────────────────────────────────────
+      React.createElement('div', { style: { padding: '0 16px' } },
+
+        // ── CHECK IN ─────────────────────────────────────────────────────────
+        bottomNav === 'checkin' && React.createElement('div', null,
+          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 12, margin: '0 0 6px' } }, '💡 ' + TIPS[tipIdx]),
+          // Wizard as check-in
+          !needsWizard && !wizardAnswer && React.createElement('div', { style: { background: gt(C.teal + '22', C.pink + '18', 135), border: `2px solid ${C.teal}55`, borderRadius: 20, padding: '20px', marginBottom: 16 } },
+            React.createElement('p', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 900, fontSize: 20, margin: '0 0 6px' } }, 'How are you right now?'),
+            React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 16px' } }, 'Tap how you\'re feeling and we\'ll take you straight to the right tool'),
+            React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 10 } },
+              WIZARD_STEPS[0].options.map(o => React.createElement('button', {
+                key: o.next, onClick: () => setWizardAnswer(o.next),
+                style: { display: 'flex', alignItems: 'center', gap: 14, textAlign: 'left', background: C.card, border: `1.5px solid ${C.border}`, borderRadius: 16, padding: '16px', cursor: 'pointer', fontFamily: 'Nunito', fontWeight: 700, fontSize: 16, color: C.text, transition: 'all 0.15s' }
+              }, o.label))
+            )
+          ),
+          wizardAnswer && React.createElement('div', { style: { ...card({ marginBottom: 16, borderColor: C.teal + '55', background: gt(C.teal + '12', C.pink + '08', 135) }) } },
+            React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 12, margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: 1 } }, '✦ We think you need'),
+            React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 } },
+              React.createElement('div', { style: { fontSize: 40 } }, WIZARD_ROUTES[wizardAnswer].icon),
+              React.createElement('div', null,
+                React.createElement('div', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 900, fontSize: 18, marginBottom: 4 } }, WIZARD_ROUTES[wizardAnswer].label),
+                React.createElement('div', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.5 } }, WIZARD_ROUTES[wizardAnswer].desc)
+              )
+            ),
+            React.createElement('div', { style: { display: 'flex', gap: 8 } },
+              React.createElement('button', {
+                onClick: () => {
+                  const r = WIZARD_ROUTES[wizardAnswer];
+                  navigateTo(r.section, r.tab);
+                  if (r.openTool) setOpenTool(r.openTool);
+                  setWizardAnswer(null);
+                  setBottomNav(r.section === 'regulate' ? 'helpme' : r.section === 'mybrain' ? 'mystuff' : r.section === 'communication' ? 'people' : 'helpme');
+                },
+                style: { ...btn(C.teal, { flex: 1, padding: 14, fontSize: 15 }) }
+              }, 'Take me there →'),
+              React.createElement('button', { onClick: () => setWizardAnswer(null), style: { ...btn(C.muted, { padding: '14px 16px' }) } }, '← Back')
+            )
+          ),
+          // Mood + sensory quick access
+          !wizardAnswer && React.createElement('div', null,
+            React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, margin: '16px 0 10px' } }, 'Or jump straight to'),
+            React.createElement('div', { style: { display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 } },
+              [
+                { icon: '🌡️', label: 'Mood check-in', section: 'regulate', tab: 'mood', color: C.yellow },
+                { icon: '👁️', label: 'Sensory check', section: 'regulate', tab: 'sensory', color: C.blue },
+                { icon: '🔁', label: 'Daily basics', section: 'mybrain', tab: 'habits', color: C.teal },
+                { icon: '🛟', label: 'Safety plan', section: 'safetyplan', tab: 'safetyplan', color: C.purple },
+              ].map(item => React.createElement('button', {
+                key: item.tab, onClick: () => { navigateTo(item.section, item.tab); setBottomNav(item.section === 'regulate' ? 'helpme' : item.section === 'mybrain' ? 'mystuff' : item.section === 'communication' ? 'people' : 'more'); },
+                style: { display: 'flex', alignItems: 'center', gap: 10, background: item.color + '0e', border: `1.5px solid ${item.color}33`, borderRadius: 14, padding: '14px', cursor: 'pointer', textAlign: 'left' }
+              },
+                React.createElement('span', { style: { fontSize: 22 } }, item.icon),
+                React.createElement('span', { style: { color: item.color, fontFamily: 'Nunito', fontWeight: 700, fontSize: 13 } }, item.label)
+              ))
+            )
+          )
         ),
 
-        // Sub-tab list — compact rows, collapses to active pill once selected
-        React.createElement('div', { style: { padding: '10px 16px 0' } },
-          activeTab
-            ? React.createElement('div', { style: { display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 } },
-                currentSectionTabs.map(tab => React.createElement('button', {
-                  key: tab.id, onClick: () => setActiveTab(tab.id),
-                  style: {
-                    background: activeTab === tab.id ? currentSection.color + '25' : 'transparent',
-                    border: `1.5px solid ${activeTab === tab.id ? currentSection.color : C.border}`,
-                    borderRadius: 20, padding: '7px 14px', cursor: 'pointer', whiteSpace: 'nowrap', transition: 'all 0.2s',
-                    color: activeTab === tab.id ? currentSection.color : C.muted,
-                    fontFamily: 'Nunito', fontWeight: activeTab === tab.id ? 700 : 400, fontSize: 13,
-                  }
-                }, tab.icon + ' ' + tab.name))
+        // ── HELP ME (Regulate) ────────────────────────────────────────────────
+        bottomNav === 'helpme' && React.createElement('div', null,
+          activeTab && section === 'regulate'
+            ? React.createElement('div', null,
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 } },
+                  React.createElement('button', { onClick: () => { setActiveTab(null); setSection(null); }, style: { background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 20, padding: '6px 14px', color: C.muted, cursor: 'pointer', fontFamily: 'Nunito', fontSize: 13 } }, '← Back'),
+                  React.createElement('h3', { style: { color: C.yellow, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, margin: 0 } }, SECTIONS.regulate.tabs.find(t => t.id === activeTab)?.icon + ' ' + SECTIONS.regulate.tabs.find(t => t.id === activeTab)?.name)
+                ),
+                renderTab(activeTab)
               )
-            : React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 8 } },
-                currentSectionTabs.map(tab => React.createElement('button', {
-                  key: tab.id, onClick: () => setActiveTab(tab.id),
-                  style: {
-                    display: 'flex', alignItems: 'center', gap: 14, width: '100%',
-                    background: C.card, border: `1.5px solid ${C.border}`,
-                    borderRadius: 14, padding: '13px 16px', cursor: 'pointer', textAlign: 'left', transition: 'all 0.2s',
-                  }
+            : React.createElement('div', null,
+                React.createElement('h2', { style: { color: C.yellow, fontFamily: 'Nunito', fontWeight: 900, fontSize: 22, margin: '0 0 4px' } }, '⚡ Help me'),
+                React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 20px' } }, 'Tools to calm your body and mind'),
+                SECTIONS.regulate.tabs.map(tab => React.createElement('button', {
+                  key: tab.id, onClick: () => navigateTo('regulate', tab.id),
+                  style: { display: 'flex', alignItems: 'center', gap: 16, width: '100%', background: C.card, border: `1.5px solid ${C.border}`, borderRadius: 18, padding: '18px', marginBottom: 10, cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s' }
                 },
-                  React.createElement('span', { style: { fontSize: 22, lineHeight: 1 } }, tab.icon),
-                  React.createElement('div', { style: { flex: 1 } },
-                    React.createElement('div', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 700, fontSize: 15 } }, tab.name),
-                    React.createElement('div', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, marginTop: 2 } }, tab.desc)
-                  ),
-                  React.createElement('span', { style: { color: C.muted, fontSize: 16, opacity: 0.5 } }, '›')
+                  React.createElement('div', { style: { width: 50, height: 50, borderRadius: 14, background: C.yellow + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 } }, tab.icon),
+                  React.createElement('div', null,
+                    React.createElement('div', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, marginBottom: 4 } }, tab.name),
+                    React.createElement('div', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.4 } }, tab.desc)
+                  )
                 ))
               )
         ),
 
-        // Tab content
-        activeTab && React.createElement('div', { style: { padding: '16px' } },
-          renderTab(activeTab)
+        // ── MY STUFF (My Brain) ───────────────────────────────────────────────
+        bottomNav === 'mystuff' && React.createElement('div', null,
+          activeTab && section === 'mybrain'
+            ? React.createElement('div', null,
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 } },
+                  React.createElement('button', { onClick: () => { setActiveTab(null); setSection(null); }, style: { background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 20, padding: '6px 14px', color: C.muted, cursor: 'pointer', fontFamily: 'Nunito', fontSize: 13 } }, '← Back'),
+                  React.createElement('h3', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, margin: 0 } }, SECTIONS.mybrain.tabs.find(t => t.id === activeTab)?.icon + ' ' + SECTIONS.mybrain.tabs.find(t => t.id === activeTab)?.name)
+                ),
+                renderTab(activeTab)
+              )
+            : React.createElement('div', null,
+                React.createElement('h2', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 900, fontSize: 22, margin: '0 0 4px' } }, '🧠 My stuff'),
+                React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 20px' } }, 'Tasks, thoughts and daily basics'),
+                SECTIONS.mybrain.tabs.map(tab => React.createElement('button', {
+                  key: tab.id, onClick: () => navigateTo('mybrain', tab.id),
+                  style: { display: 'flex', alignItems: 'center', gap: 16, width: '100%', background: C.card, border: `1.5px solid ${C.border}`, borderRadius: 18, padding: '18px', marginBottom: 10, cursor: 'pointer', textAlign: 'left' }
+                },
+                  React.createElement('div', { style: { width: 50, height: 50, borderRadius: 14, background: C.teal + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 } }, tab.icon),
+                  React.createElement('div', null,
+                    React.createElement('div', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, marginBottom: 4 } }, tab.name),
+                    React.createElement('div', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.4 } }, tab.desc)
+                  )
+                ))
+              )
+        ),
+
+        // ── PEOPLE (Communication) ────────────────────────────────────────────
+        bottomNav === 'people' && React.createElement('div', null,
+          activeTab && section === 'communication'
+            ? React.createElement('div', null,
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 } },
+                  React.createElement('button', { onClick: () => { setActiveTab(null); setSection(null); }, style: { background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 20, padding: '6px 14px', color: C.muted, cursor: 'pointer', fontFamily: 'Nunito', fontSize: 13 } }, '← Back'),
+                  React.createElement('h3', { style: { color: C.pink, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, margin: 0 } }, SECTIONS.communication.tabs.find(t => t.id === activeTab)?.icon + ' ' + SECTIONS.communication.tabs.find(t => t.id === activeTab)?.name)
+                ),
+                renderTab(activeTab)
+              )
+            : React.createElement('div', null,
+                React.createElement('h2', { style: { color: C.pink, fontFamily: 'Nunito', fontWeight: 900, fontSize: 22, margin: '0 0 4px' } }, '💬 People'),
+                React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 20px' } }, 'When people are hard, or you\'re hard to understand'),
+                SECTIONS.communication.tabs.map(tab => React.createElement('button', {
+                  key: tab.id, onClick: () => navigateTo('communication', tab.id),
+                  style: { display: 'flex', alignItems: 'center', gap: 16, width: '100%', background: C.card, border: `1.5px solid ${C.border}`, borderRadius: 18, padding: '18px', marginBottom: 10, cursor: 'pointer', textAlign: 'left' }
+                },
+                  React.createElement('div', { style: { width: 50, height: 50, borderRadius: 14, background: C.pink + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 } }, tab.icon),
+                  React.createElement('div', null,
+                    React.createElement('div', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, marginBottom: 4 } }, tab.name),
+                    React.createElement('div', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.4 } }, tab.desc)
+                  )
+                ))
+              )
+        ),
+
+        // ── MORE ──────────────────────────────────────────────────────────────
+        bottomNav === 'more' && React.createElement('div', null,
+          activeTab && (section === 'aboutme' || section === 'safetyplan')
+            ? React.createElement('div', null,
+                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 } },
+                  React.createElement('button', { onClick: () => { setActiveTab(null); setSection(null); }, style: { background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 20, padding: '6px 14px', color: C.muted, cursor: 'pointer', fontFamily: 'Nunito', fontSize: 13 } }, '← Back'),
+                ),
+                renderTab(activeTab)
+              )
+            : React.createElement('div', null,
+                React.createElement('h2', { style: { color: C.purple, fontFamily: 'Nunito', fontWeight: 900, fontSize: 22, margin: '0 0 4px' } }, '☰ More'),
+                React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 20px' } }, 'Safety plan, about me, and games'),
+                [
+                  { icon: '🛟', label: 'Safety Plan', desc: 'Your personal crisis plan — written when you\'re calm', section: 'safetyplan', tab: 'safetyplan', color: C.purple },
+                  { icon: '💙', label: 'About Me', desc: 'Scripts to explain yourself to others', section: 'aboutme', tab: 'disclosure', color: C.blue },
+                  { icon: '🎮', label: 'Games', desc: 'Snake, Block Drop, Nonogram — dopamine the fun way', section: 'regulate', tab: 'dopamine', color: C.pink },
+                ].map(item => React.createElement('button', {
+                  key: item.tab, onClick: () => { navigateTo(item.section, item.tab); if (item.section === 'regulate') setBottomNav('helpme'); },
+                  style: { display: 'flex', alignItems: 'center', gap: 16, width: '100%', background: C.card, border: `1.5px solid ${C.border}`, borderRadius: 18, padding: '18px', marginBottom: 10, cursor: 'pointer', textAlign: 'left' }
+                },
+                  React.createElement('div', { style: { width: 50, height: 50, borderRadius: 14, background: item.color + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 } }, item.icon),
+                  React.createElement('div', null,
+                    React.createElement('div', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, marginBottom: 4 } }, item.label),
+                    React.createElement('div', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.4 } }, item.desc)
+                  )
+                ))
+              )
         )
       ),
 
-      // ── FOOTER ────────────────────────────────────────────────────────────
-      React.createElement('div', { style: { padding: '20px 16px 0', textAlign: 'center' } },
-        React.createElement('p', { style: { color: C.muted, fontSize: 11, fontFamily: 'Nunito', margin: '0 0 4px' } }, '© 2026 Wired & Well Ltd'),
-        React.createElement('p', { style: { color: C.muted, fontSize: 10, fontFamily: 'Nunito Sans', margin: 0, lineHeight: 1.5 } }, 'This app is for informational and self-support purposes only. It is not a substitute for professional medical or mental health advice.')
+      // ── BOTTOM NAV BAR ──────────────────────────────────────────────────────
+      React.createElement('div', { style: { position: 'fixed', bottom: 0, left: 0, right: 0, background: C.bg, borderTop: `1px solid ${C.border}`, display: 'flex', zIndex: 100, paddingBottom: 'env(safe-area-inset-bottom, 0px)', maxWidth: 480, margin: '0 auto' } },
+        [
+          { id: 'checkin', icon: '✨', label: 'Check In' },
+          { id: 'helpme', icon: '⚡', label: 'Help Me' },
+          { id: 'mystuff', icon: '🧠', label: 'My Stuff' },
+          { id: 'people', icon: '💬', label: 'People' },
+          { id: 'more', icon: '☰', label: 'More' },
+        ].map(tab => React.createElement('button', {
+          key: tab.id,
+          onClick: () => { setBottomNav(tab.id); setActiveTab(null); setSection(null); },
+          style: {
+            flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            padding: '10px 0 12px', background: 'transparent', border: 'none', cursor: 'pointer',
+            borderTop: `2px solid ${bottomNav === tab.id ? C.teal : 'transparent'}`,
+            transition: 'all 0.15s',
+          }
+        },
+          React.createElement('span', { style: { fontSize: 20, marginBottom: 3 } }, tab.icon),
+          React.createElement('span', { style: { color: bottomNav === tab.id ? C.teal : C.muted, fontFamily: 'Nunito', fontWeight: bottomNav === tab.id ? 700 : 400, fontSize: 10 } }, tab.label)
+        ))
       )
     )
   );
 }
+
+
+ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
