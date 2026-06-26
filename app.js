@@ -28,10 +28,16 @@ async function supabase(method, path, body, token) {
 async function sbAuth(action, email, password) {
   const res = await fetch(`${SUPABASE_URL}/auth/v1/${action}`, {
     method: 'POST',
-    headers: { 'apikey': SUPABASE_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, password }),
+    headers: { 
+      'apikey': SUPABASE_KEY, 
+      'Content-Type': 'application/json',
+      'X-Client-Info': 'steady-app'
+    },
+    body: JSON.stringify({ email, password, gotrue_meta_security: {} }),
   });
-  return await res.json();
+  const data = await res.json();
+  console.log('Auth response:', JSON.stringify(data));
+  return data;
 }
 
 async function sbSignOut(token) {
@@ -900,7 +906,7 @@ function App() {
     setAuthLoading(true); setAuthError(null);
     try {
       const res = await sbAuth('token?grant_type=password', authEmail, authPassword);
-      if (res.error) { setAuthError(res.error.message || 'Login failed — please check your email and password'); setAuthLoading(false); return; }
+      if (res.error) { setAuthError(res.error.message || res.msg || 'Login failed — please check your email and password'); setAuthLoading(false); return; }
       if (res.access_token) {
         setAuthToken(res.access_token);
         setUser(res.user);
