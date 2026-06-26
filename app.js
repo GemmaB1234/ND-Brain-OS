@@ -5,7 +5,7 @@ const { useState, useEffect, useRef, useCallback } = React;
 // ─── SUPABASE CLIENT ──────────────────────────────────────────────────────────
 
 const SUPABASE_URL = 'https://ahhgssocxiemxotqcqzz.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_eM1hDvbQNB6Ip_hktigGRw_5_CJrQU7';
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFoaGdzc29jeGllbXhvdHFjcXp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzMjk2MjEsImV4cCI6MjA5NjkwNTYyMX0.r9BUPR7mBHs9cg4lN2sqLKVau6F4F4tLMr3_iW64UlM';
 
 async function supabase(method, path, body, token) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
