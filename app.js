@@ -30,7 +30,6 @@ async function supabase(method, path, body, token) {
 }
 
 
-}
 
 // Steady — Wired & Well Ltd
 // Complete single-file React app
