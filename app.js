@@ -11,7 +11,7 @@ const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
 });
 
 
-async function supabase(method, path, body, token) {
+async function sbRest(method, path, body, token) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     method,
     headers: {
@@ -848,20 +848,20 @@ function App() {
 
   async function loadUserData(token, user0bj) {
     try {
-      const profile = await supabase('GET', `profiles?id=eq.${user?.id || ''}&select=*`, null, token);
+      const profile = await sbRest('GET', `profiles?id=eq.${user?.id || ''}&select=*`, null, token);
       if (profile && profile[0]) {
         if (profile[0].theme_id) setThemeId(profile[0].theme_id);
         if (profile[0].plain_language !== undefined) setPlainLanguage(profile[0].plain_language);
         if (profile[0].points) setPoints(profile[0].points);
         if (profile[0].screen && profile[0].screen !== 'welcome') setScreen(profile[0].screen);
       }
-      const taskData = await supabase('GET', `tasks?user_id=eq.${user?.id || ''}&order=created_at`, null, token);
+      const taskData = await sbRest('GET', `tasks?user_id=eq.${user?.id || ''}&order=created_at`, null, token);
       if (taskData && taskData.length) setTasks(taskData.map(t => ({ id: t.id, text: t.text, tier: t.tier, done: t.done, steps: t.steps })));
-      const habitData = await supabase('GET', `habits?user_id=eq.${user?.id || ''}&order=created_at`, null, token);
+      const habitData = await sbRest('GET', `habits?user_id=eq.${user?.id || ''}&order=created_at`, null, token);
       if (habitData && habitData.length) setHabits(habitData.map(h => ({ id: h.id, emoji: h.emoji, text: h.text, done: h.done, lastDone: h.last_done })));
-      const moodData = await supabase('GET', `mood_history?user_id=eq.${user?.id || ''}&order=created_at.desc&limit=30`, null, token);
+      const moodData = await sbRest('GET', `mood_history?user_id=eq.${user?.id || ''}&order=created_at.desc&limit=30`, null, token);
       if (moodData && moodData.length) setMoodHistory(moodData.map(m => ({ mood: m.mood, note: m.note, date: m.created_at })));
-      const spData = await supabase('GET', `safety_plans?user_id=eq.${user?.id || ''}&select=*`, null, token);
+      const spData = await sbRest('GET', `safety_plans?user_id=eq.${user?.id || ''}&select=*`, null, token);
       if (spData && spData[0]) { setSafetyPlan(spData[0].plan); setSafetyPlanSaved(spData[0].saved); setSafetyPlanEditing(!spData[0].saved); }
     } catch(e) { console.log('Load error', e); }
   }
@@ -900,7 +900,7 @@ function App() {
     if (!user || !authToken) return;
     const t = setTimeout(async () => {
       try {
-        await supabase('PATCH', `profiles?id=eq.${user.id}`, { theme_id: themeId, plain_language: plainLanguage, points, screen }, authToken);
+        await sbRest('PATCH', `profiles?id=eq.${user.id}`, { theme_id: themeId, plain_language: plainLanguage, points, screen }, authToken);
       } catch(e) {}
     }, 1000);
     return () => clearTimeout(t);
