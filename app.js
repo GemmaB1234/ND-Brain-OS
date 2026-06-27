@@ -5,14 +5,18 @@ const { useState, useEffect, useRef, useCallback } = React;
 // ─── SUPABASE CLIENT ──────────────────────────────────────────────────────────
 
 const SUPABASE_URL = 'https://ahhgssocxiemxotqcqzz.supabase.co';
-const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFoaGdzc29jeGllbXhvdHFjcXp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzMjk2MjEsImV4cCI6MjA5NjkwNTYyMX0.r9BUPR7mBHs9cg4lN2sqLKVau6F4F4tLMr3_iW64UlM';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFoaGdzc29jeGllbXhvdHFjcXp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzMjk2MjEsImV4cCI6MjA5NjkwNTYyMX0.r9BUPR7mBHs9cg4lN2sqLKVau6F4F4tLMr3_iW64UlM';
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, storageKey: 'steady_session' }
+});
+
 
 async function supabase(method, path, body, token) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     method,
     headers: {
-      'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${token || SUPABASE_KEY}`,
+      'apikey' SUPABASE_ANON_KEY,
+      'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
       'Prefer': method === 'POST' ? 'return=representation' : 'return=minimal',
     },
@@ -25,31 +29,7 @@ async function supabase(method, path, body, token) {
   try { return await res.json(); } catch { return null; }
 }
 
-async function sbAuth(action, email, password) {
-  // New publishable key format uses /auth/v1/ endpoints
-  const endpoint = action === 'signup' 
-    ? `${SUPABASE_URL}/auth/v1/signup`
-    : `${SUPABASE_URL}/auth/v1/token?grant_type=password`;
-  
-  const res = await fetch(endpoint, {
-    method: 'POST',
-    headers: { 
-      'apikey': SUPABASE_KEY,
-      'Authorization': `Bearer ${SUPABASE_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ email, password }),
-  });
-  const text = await res.text();
-  console.log('Auth status:', res.status, 'Response:', text);
-  try { return JSON.parse(text); } catch { return { error: { message: text } }; }
-}
 
-async function sbSignOut(token) {
-  await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
-    method: 'POST',
-    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${token}` },
-  });
 }
 
 // Steady — Wired & Well Ltd
@@ -850,28 +830,24 @@ function App() {
 
   // Load saved session on mount
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem('ndbrainos_session');
-      if (saved) {
-        const { token, userData } = JSON.parse(saved);
-        setAuthToken(token);
-        setUser(userData);
-        loadUserData(token);
+    sb.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setUser(session.user);
+        setAuthToken(session.access_token);
+        loadUserData(session.access_token, session.user);
+        setScreen('home');
       }
-    } catch(e) {}
-    setAuthChecked(true);
+      setAuthChecked(true);
+    });
+    const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
+      if (session) { setUser(session.user); setAuthToken(session.access_token); }
+      else { setUser(null); setAuthToken(null); }
+    });
+    return () => subscription.unsubscribe();
   }, []);
+     
 
-  // Save session to localStorage when auth changes
-  useEffect(() => {
-    if (user && authToken) {
-      localStorage.setItem('ndbrainos_session', JSON.stringify({ token: authToken, userData: user }));
-    } else {
-      localStorage.removeItem('ndbrainos_session');
-    }
-  }, [user, authToken]);
-
-  async function loadUserData(token) {
+  async function loadUserData(token, user0bj) {
     try {
       const profile = await supabase('GET', `profiles?id=eq.${user?.id || ''}&select=*`, null, token);
       if (profile && profile[0]) {
@@ -893,43 +869,31 @@ function App() {
 
   async function handleSignUp() {
     setAuthLoading(true); setAuthError(null);
-    try {
-      const res = await sbAuth('signup', authEmail, authPassword);
-      if (res.error) { setAuthError(res.error.message || 'Sign up failed — please try again'); setAuthLoading(false); return; }
-      if (res.access_token) {
-        setAuthToken(res.access_token); setUser(res.user); setScreen('welcome');
-      } else {
-        setAuthError('Could not create account — please try again');
-      }
-    } catch(e) {
-      setAuthError('Could not connect — please check your internet connection');
+    const { data, error } = await sb.auth.signUp({ email: authEmail, password: authPassword });
+    if (error) { setAuthError(error.message); setAuthLoading(false); return; }
+    if (data.session) {
+      setUser(data.user); setAuthToken(data.session.access_token); setScreen('welcome');
+    } else {
+      setAuthError('Check your email to confirm your account, then log in.');
     }
     setAuthLoading(false);
   }
+   
 
   async function handleLogin() {
     setAuthLoading(true); setAuthError(null);
-    try {
-      const res = await sbAuth('token?grant_type=password', authEmail, authPassword);
-      if (res.error) { setAuthError(res.error.message || res.error_description || res.msg || JSON.stringify(res.error)); setAuthLoading(false); return; }
-      if (res.access_token) {
-        setAuthToken(res.access_token);
-        setUser(res.user);
-        try { await loadUserData(res.access_token); } catch(e) { console.log('Load data error', e); }
-        setScreen('home');
-      } else {
-        setAuthError('Something went wrong — please try again');
-      }
-    } catch(e) {
-      setAuthError('Could not connect — please check your internet connection');
-    }
+    const { data, error } = await sb.auth.signInWithPassword({ email: authEmail, password: authPassword });
+    if (error) { setAuthError(error.message); setAuthLoading(false); return; }
+    setUser(data.user);
+    setAuthToken(data.session.access_token);
+    try { await loadUserData(data.session.access_token, data.user); } catch(e) { console.log('Load data error', e); }
+    setScreen('home');
     setAuthLoading(false);
   }
-
+      
   async function handleSignOut() {
-    if (authToken) await sbSignOut(authToken);
+    await sb.auth.signOut();
     setUser(null); setAuthToken(null); setScreen('welcome');
-    localStorage.removeItem('ndbrainos_session');
   }
 
   // Auto-save to Supabase when key data changes
@@ -2913,7 +2877,7 @@ function App() {
         React.createElement('button', {
           onClick: async () => {
             if (!changePwNew || changePwNew.length < 6) { setChangePwMsg({ ok: false, text: 'Password must be at least 6 characters' }); return; }
-            const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, { method: 'PUT', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ password: changePwNew }) });
+            const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, { method: 'PUT', headers: { 'apikey' SUPABASE_ANON_KEY, 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ password: changePwNew }) });
             if (res.ok) { setChangePwMsg({ ok: true, text: 'Password updated ✓' }); setChangePwNew(""); }
             else { setChangePwMsg({ ok: false, text: 'Could not update password — please try again' }); }
           },
@@ -2948,7 +2912,7 @@ function App() {
               React.createElement('button', { onClick: () => setDeleteConfirm(false), style: { ...btn(C.muted, { flex: 1 }) } }, 'Cancel'),
               React.createElement('button', {
                 onClick: async () => {
-                  await fetch(`${SUPABASE_URL}/auth/v1/user`, { method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${authToken}` } });
+                  await fetch(`${SUPABASE_URL}/auth/v1/user`, { method: 'DELETE', headers: { 'apikey' SUPABASE_ANON_KEY, 'Authorization': `Bearer ${authToken}` } });
                   handleSignOut();
                 },
                 style: { ...btn(C.pink, { flex: 1 }) }
