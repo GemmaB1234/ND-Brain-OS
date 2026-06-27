@@ -6,7 +6,7 @@ const { useState, useEffect, useRef, useCallback } = React;
 
 const SUPABASE_URL = 'https://ahhgssocxiemxotqcqzz.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFoaGdzc29jeGllbXhvdHFjcXp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzMjk2MjEsImV4cCI6MjA5NjkwNTYyMX0.r9BUPR7mBHs9cg4lN2sqLKVau6F4F4tLMr3_iW64UlM';
-const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, storageKey: 'steady_session' }
 });
 
