@@ -15,7 +15,7 @@ async function supabase(method, path, body, token) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     method,
     headers: {
-      'apikey' SUPABASE_ANON_KEY,
+      'apikey': SUPABASE_ANON_KEY,
       'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json',
       'Prefer': method === 'POST' ? 'return=representation' : 'return=minimal',
@@ -2912,7 +2912,7 @@ function App() {
               React.createElement('button', { onClick: () => setDeleteConfirm(false), style: { ...btn(C.muted, { flex: 1 }) } }, 'Cancel'),
               React.createElement('button', {
                 onClick: async () => {
-                  await fetch(`${SUPABASE_URL}/auth/v1/user`, { method: 'DELETE', headers: { 'apikey' SUPABASE_ANON_KEY, 'Authorization': `Bearer ${authToken}` } });
+                  await fetch(`${SUPABASE_URL}/auth/v1/user`, { method: 'DELETE', headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${authToken}` } });
                   handleSignOut();
                 },
                 style: { ...btn(C.pink, { flex: 1 }) }
