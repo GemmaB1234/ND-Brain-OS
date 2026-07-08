@@ -1267,6 +1267,12 @@ function App() {
         { id: "safetyplan", icon: "🛟", name: plainLanguage ? "My crisis plan" : "My Safety Plan", desc: plainLanguage ? "Your plan for when everything gets too much" : "Your personal plan for meltdown and overwhelm — written by you, for you" },
       ]
     },
+    names: {
+      label: "✨ Finally Have Names", color: C.pink,
+      tabs: [
+        { id: "names", icon: "✨", name: "Finally Have Names", desc: "20 ND experiences that finally have words" },
+      ]
+    },
   };
 
   const HOME_CARDS = [
