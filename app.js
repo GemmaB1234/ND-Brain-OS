@@ -802,6 +802,7 @@ function App() {
 
   // Toolkit state
   const [openTool, setOpenTool] = useState(null);
+  const [namesExpanded, setNamesExpanded] = useState(null);
   const [pinnedTools, setPinnedTools] = useState([]); // [{section, tab, icon, label, color}]
   const [lastUsed, setLastUsed] = useState(null); // {section, tab, icon, label, color}
   const [showAllSections, setShowAllSections] = useState(false);
@@ -3117,7 +3118,8 @@ function App() {
       },
     ];
 
-    const [expanded, setExpanded] = useState(null);
+    const expanded = namesExpanded;
+    const setExpanded = setNamesExpanded;
 
     return React.createElement('div', null,
       // Header
