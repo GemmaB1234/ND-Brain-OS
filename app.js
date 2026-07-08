@@ -708,6 +708,8 @@ function App() {
   const [themePanelOpen, setThemePanelOpen] = useState(false);
   const [plainLanguage, setPlainLanguage] = useState(false);
   const [needsWizard, setNeedsWizard] = useState(false);
+  const [appNickname, setAppNickname] = useState('');
+  const [nicknamePrompt, setNicknamePrompt] = useState(false);
   const [wizardStep, setWizardStep] = useState(0);
   const [wizardAnswer, setWizardAnswer] = useState(null);
   const [screen, setScreen] = useState("welcome"); // welcome | home | section
@@ -859,9 +861,16 @@ function App() {
         setUser(userData);
         loadUserData(token);
       }
+      const nick = localStorage.getItem('ndbrainos_nickname');
+      if (nick) setAppNickname(nick);
     } catch(e) {}
     setAuthChecked(true);
   }, []);
+
+  // Save nickname whenever it changes
+  useEffect(() => {
+    localStorage.setItem('ndbrainos_nickname', appNickname);
+  }, [appNickname]);
 
   // Save session to localStorage when auth changes
   useEffect(() => {
@@ -3262,6 +3271,36 @@ function App() {
 
     // Floating ND words — removed to keep text readable
 
+    // Nickname modal
+    nicknamePrompt && React.createElement('div', {
+      onClick: () => setNicknamePrompt(false),
+      style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }
+    },
+      React.createElement('div', {
+        onClick: e => e.stopPropagation(),
+        style: { background: C.card, borderRadius: 24, padding: '28px 24px', width: '100%', maxWidth: 340, border: `1.5px solid ${C.teal}` }
+      },
+        React.createElement('p', { style: { fontSize: 32, textAlign: 'center', marginBottom: 10 } }, '✨'),
+        React.createElement('h3', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 900, fontSize: 20, margin: '0 0 8px', textAlign: 'center' } }, 'Make it yours'),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 20px', textAlign: 'center', lineHeight: 1.6 } }, 'Give your space a name. It can be your name, a word that feels safe, or anything that feels like yours.'),
+        React.createElement('input', {
+          placeholder: "e.g. Gemma's Space, My Calm, Safe Space...",
+          value: appNickname,
+          onChange: e => setAppNickname(e.target.value),
+          onKeyDown: e => e.key === 'Enter' && setNicknamePrompt(false),
+          style: { ...input({ marginBottom: 16, textAlign: 'center', fontSize: 16 }), fontFamily: 'Nunito', fontWeight: 700 }
+        }),
+        React.createElement('button', {
+          onClick: () => setNicknamePrompt(false),
+          style: { ...btn(C.teal, { width: '100%', padding: 14, fontSize: 15 }) }
+        }, appNickname ? '✓ Save' : 'Keep it as Steady'),
+        appNickname && React.createElement('button', {
+          onClick: () => { setAppNickname(''); setNicknamePrompt(false); },
+          style: { ...btn(C.muted, { width: '100%', marginTop: 8 }) }
+        }, 'Reset to Steady')
+      )
+    ),
+
     // Toast notification
     toast && React.createElement('div', { style: { position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', background: C.teal, color: '#000', padding: '10px 20px', borderRadius: 20, fontFamily: 'Nunito', fontWeight: 700, fontSize: 13, zIndex: 9999, animation: 'toastIn 0.3s ease', whiteSpace: 'nowrap', maxWidth: '90vw', boxShadow: `0 0 30px ${C.teal}66` } }, toast),
 
@@ -3308,7 +3347,10 @@ function App() {
 
       // ── HEADER ─────────────────────────────────────────────────────────────
       React.createElement('div', { style: { padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
-        React.createElement('h1', { style: { fontFamily: 'Nunito', fontWeight: 900, fontSize: 20, margin: 0, background: `linear-gradient(135deg, ${C.teal}, ${C.pink}, ${C.blue})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' } }, 'Steady'),
+        React.createElement('div', { style: { cursor: 'pointer' }, onClick: () => setNicknamePrompt(true) },
+          React.createElement('h1', { style: { fontFamily: 'Nunito', fontWeight: 900, fontSize: 20, margin: 0, background: `linear-gradient(135deg, ${C.teal}, ${C.pink}, ${C.blue})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' } }, appNickname || 'Steady'),
+          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 11, margin: 0, letterSpacing: 0.3 } }, appNickname ? 'your neurodivergent support app' : 'tap to make this yours ✨')
+        ),
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
           React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 } },
             React.createElement('button', { onClick: () => setThemePanelOpen(o => !o), style: { width: 22, height: 22, borderRadius: '50%', border: `1.5px solid ${C.border}`, background: `conic-gradient(${C.teal} 0deg 90deg, ${C.pink} 90deg 180deg, ${C.yellow} 180deg 270deg, ${C.blue} 270deg 360deg)`, cursor: 'pointer', padding: 0, boxShadow: themePanelOpen ? `0 0 0 2px ${C.teal}` : 'none' } }),
