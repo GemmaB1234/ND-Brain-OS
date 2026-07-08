@@ -5,18 +5,14 @@ const { useState, useEffect, useRef, useCallback } = React;
 // ─── SUPABASE CLIENT ──────────────────────────────────────────────────────────
 
 const SUPABASE_URL = 'https://ahhgssocxiemxotqcqzz.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFoaGdzc29jeGllbXhvdHFjcXp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzMjk2MjEsImV4cCI6MjA5NjkwNTYyMX0.r9BUPR7mBHs9cg4lN2sqLKVau6F4F4tLMr3_iW64UlM';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
-  auth: { persistSession: true, autoRefreshToken: true, storageKey: 'steady_session' }
-});
+const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFoaGdzc29jeGllbXhvdHFjcXp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzMjk2MjEsImV4cCI6MjA5NjkwNTYyMX0.r9BUPR7mBHs9cg4lN2sqLKVau6F4F4tLMr3_iW64UlM';
 
-
-async function sbRest(method, path, body, token) {
+async function supabase(method, path, body, token) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     method,
     headers: {
-      'apikey': SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${token}`,
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${token || SUPABASE_KEY}`,
       'Content-Type': 'application/json',
       'Prefer': method === 'POST' ? 'return=representation' : 'return=minimal',
     },
@@ -29,7 +25,32 @@ async function sbRest(method, path, body, token) {
   try { return await res.json(); } catch { return null; }
 }
 
+async function sbAuth(action, email, password) {
+  // New publishable key format uses /auth/v1/ endpoints
+  const endpoint = action === 'signup' 
+    ? `${SUPABASE_URL}/auth/v1/signup`
+    : `${SUPABASE_URL}/auth/v1/token?grant_type=password`;
+  
+  const res = await fetch(endpoint, {
+    method: 'POST',
+    headers: { 
+      'apikey': SUPABASE_KEY,
+      'Authorization': `Bearer ${SUPABASE_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ email, password }),
+  });
+  const text = await res.text();
+  console.log('Auth status:', res.status, 'Response:', text);
+  try { return JSON.parse(text); } catch { return { error: { message: text } }; }
+}
 
+async function sbSignOut(token) {
+  await fetch(`${SUPABASE_URL}/auth/v1/logout`, {
+    method: 'POST',
+    headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${token}` },
+  });
+}
 
 // Steady — Wired & Well Ltd
 // Complete single-file React app
@@ -829,70 +850,86 @@ function App() {
 
   // Load saved session on mount
   useEffect(() => {
-    sb.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setUser(session.user);
-        setAuthToken(session.access_token);
-        loadUserData(session.access_token, session.user);
-        setScreen('home');
-      }
-      setAuthChecked(true);
-    });
-    const { data: { subscription } } = sb.auth.onAuthStateChange((_event, session) => {
-      if (session) { setUser(session.user); setAuthToken(session.access_token); }
-      else { setUser(null); setAuthToken(null); }
-    });
-    return () => subscription.unsubscribe();
-  }, []);
-     
-
-  async function loadUserData(token, user0bj) {
     try {
-      const profile = await sbRest('GET', `profiles?id=eq.${user?.id || ''}&select=*`, null, token);
+      const saved = localStorage.getItem('ndbrainos_session');
+      if (saved) {
+        const { token, userData } = JSON.parse(saved);
+        setAuthToken(token);
+        setUser(userData);
+        loadUserData(token);
+      }
+    } catch(e) {}
+    setAuthChecked(true);
+  }, []);
+
+  // Save session to localStorage when auth changes
+  useEffect(() => {
+    if (user && authToken) {
+      localStorage.setItem('ndbrainos_session', JSON.stringify({ token: authToken, userData: user }));
+    } else {
+      localStorage.removeItem('ndbrainos_session');
+    }
+  }, [user, authToken]);
+
+  async function loadUserData(token) {
+    try {
+      const profile = await supabase('GET', `profiles?id=eq.${user?.id || ''}&select=*`, null, token);
       if (profile && profile[0]) {
         if (profile[0].theme_id) setThemeId(profile[0].theme_id);
         if (profile[0].plain_language !== undefined) setPlainLanguage(profile[0].plain_language);
         if (profile[0].points) setPoints(profile[0].points);
         if (profile[0].screen && profile[0].screen !== 'welcome') setScreen(profile[0].screen);
       }
-      const taskData = await sbRest('GET', `tasks?user_id=eq.${user?.id || ''}&order=created_at`, null, token);
+      const taskData = await supabase('GET', `tasks?user_id=eq.${user?.id || ''}&order=created_at`, null, token);
       if (taskData && taskData.length) setTasks(taskData.map(t => ({ id: t.id, text: t.text, tier: t.tier, done: t.done, steps: t.steps })));
-      const habitData = await sbRest('GET', `habits?user_id=eq.${user?.id || ''}&order=created_at`, null, token);
+      const habitData = await supabase('GET', `habits?user_id=eq.${user?.id || ''}&order=created_at`, null, token);
       if (habitData && habitData.length) setHabits(habitData.map(h => ({ id: h.id, emoji: h.emoji, text: h.text, done: h.done, lastDone: h.last_done })));
-      const moodData = await sbRest('GET', `mood_history?user_id=eq.${user?.id || ''}&order=created_at.desc&limit=30`, null, token);
+      const moodData = await supabase('GET', `mood_history?user_id=eq.${user?.id || ''}&order=created_at.desc&limit=30`, null, token);
       if (moodData && moodData.length) setMoodHistory(moodData.map(m => ({ mood: m.mood, note: m.note, date: m.created_at })));
-      const spData = await sbRest('GET', `safety_plans?user_id=eq.${user?.id || ''}&select=*`, null, token);
+      const spData = await supabase('GET', `safety_plans?user_id=eq.${user?.id || ''}&select=*`, null, token);
       if (spData && spData[0]) { setSafetyPlan(spData[0].plan); setSafetyPlanSaved(spData[0].saved); setSafetyPlanEditing(!spData[0].saved); }
     } catch(e) { console.log('Load error', e); }
   }
 
   async function handleSignUp() {
     setAuthLoading(true); setAuthError(null);
-    const { data, error } = await sb.auth.signUp({ email: authEmail, password: authPassword });
-    if (error) { setAuthError(error.message); setAuthLoading(false); return; }
-    if (data.session) {
-      setUser(data.user); setAuthToken(data.session.access_token); setScreen('welcome');
-    } else {
-      setAuthError('Check your email to confirm your account, then log in.');
+    try {
+      const res = await sbAuth('signup', authEmail, authPassword);
+      if (res.error) { setAuthError(res.error.message || 'Sign up failed — please try again'); setAuthLoading(false); return; }
+      if (res.access_token) {
+        setAuthToken(res.access_token); setUser(res.user); setScreen('welcome');
+      } else {
+        setAuthError('Could not create account — please try again');
+      }
+    } catch(e) {
+      setAuthError('Could not connect — please check your internet connection');
     }
     setAuthLoading(false);
   }
-   
 
   async function handleLogin() {
     setAuthLoading(true); setAuthError(null);
-    const { data, error } = await sb.auth.signInWithPassword({ email: authEmail, password: authPassword });
-    if (error) { setAuthError(error.message); setAuthLoading(false); return; }
-    setUser(data.user);
-    setAuthToken(data.session.access_token);
-    try { await loadUserData(data.session.access_token, data.user); } catch(e) { console.log('Load data error', e); }
-    setScreen('home');
+    try {
+      const res = await sbAuth('token?grant_type=password', authEmail, authPassword);
+      if (res.error) { setAuthError(res.error.message || res.error_description || res.msg || JSON.stringify(res.error)); setAuthLoading(false); return; }
+      if (res.access_token) {
+        setAuthToken(res.access_token);
+        setUser(res.user);
+        try { await loadUserData(res.access_token); } catch(e) { console.log('Load data error', e); }
+        setScreen('home');
+      } else {
+        setAuthError('Something went wrong — please try again');
+      }
+    } catch(e) {
+      setAuthError('Could not connect — please check your internet connection');
+    }
     setAuthLoading(false);
   }
-      
+
   async function handleSignOut() {
-    await sb.auth.signOut();
+    if (authToken) await sbSignOut(authToken);
     setUser(null); setAuthToken(null); setScreen('welcome');
+    localStorage.removeItem('ndbrainos_session');
   }
 
   // Auto-save to Supabase when key data changes
@@ -900,7 +937,7 @@ function App() {
     if (!user || !authToken) return;
     const t = setTimeout(async () => {
       try {
-        await sbRest('PATCH', `profiles?id=eq.${user.id}`, { theme_id: themeId, plain_language: plainLanguage, points, screen }, authToken);
+        await supabase('PATCH', `profiles?id=eq.${user.id}`, { theme_id: themeId, plain_language: plainLanguage, points, screen }, authToken);
       } catch(e) {}
     }, 1000);
     return () => clearTimeout(t);
@@ -2876,7 +2913,7 @@ function App() {
         React.createElement('button', {
           onClick: async () => {
             if (!changePwNew || changePwNew.length < 6) { setChangePwMsg({ ok: false, text: 'Password must be at least 6 characters' }); return; }
-            const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, { method: 'PUT', headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ password: changePwNew }) });
+            const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, { method: 'PUT', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ password: changePwNew }) });
             if (res.ok) { setChangePwMsg({ ok: true, text: 'Password updated ✓' }); setChangePwNew(""); }
             else { setChangePwMsg({ ok: false, text: 'Could not update password — please try again' }); }
           },
@@ -2911,7 +2948,7 @@ function App() {
               React.createElement('button', { onClick: () => setDeleteConfirm(false), style: { ...btn(C.muted, { flex: 1 }) } }, 'Cancel'),
               React.createElement('button', {
                 onClick: async () => {
-                  await fetch(`${SUPABASE_URL}/auth/v1/user`, { method: 'DELETE', headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${authToken}` } });
+                  await fetch(`${SUPABASE_URL}/auth/v1/user`, { method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${authToken}` } });
                   handleSignOut();
                 },
                 style: { ...btn(C.pink, { flex: 1 }) }
@@ -2950,6 +2987,185 @@ function App() {
     );
   }
 
+  function renderFinallyHaveNames() {
+    const NAMES = [
+      {
+        n: 1, name: "Body doubling",
+        tagline: "you can't start alone, but with someone nearby, it happens",
+        explanation: "Your brain needs the presence of another person to feel safe enough to start. It's not laziness — it's a nervous system that regulates through co-regulation. Working alongside someone (even silently, even on a call) can unlock what feels impossible alone.",
+        tool: { label: "Try the Body Double timer", section: "regulate", tab: "toolkit", openTool: "bodydouble", nav: "helpme" }
+      },
+      {
+        n: 2, name: "Time blindness",
+        tagline: "there's no 'later.' only now, or not yet",
+        explanation: "ADHD brains often experience time as two states: NOW and NOT NOW. The future doesn't feel real until it's urgent. This isn't poor planning — it's a neurological difference in how time is perceived and felt. Timers, alarms, and visual clocks help make time feel real.",
+        tool: { label: "Go to Tasks", section: "mybrain", tab: "tasks", nav: "mystuff" }
+      },
+      {
+        n: 3, name: "Rejection sensitivity",
+        tagline: "one short reply and the whole day is over",
+        explanation: "Also called RSD — Rejection Sensitive Dysphoria. A brief or neutral message feels like devastating rejection. The pain is neurobiological and completely real. It's not an overreaction. Your brain is wired to detect social threat with much higher intensity.",
+        tool: { label: "Go to RSD support", section: "communication", tab: "rsd", nav: "people" }
+      },
+      {
+        n: 4, name: "Hyperfocus",
+        tagline: "four hours gone on something that wasn't even the point",
+        explanation: "The flip side of attention difficulties — when something captures your interest, everything else disappears. Time, hunger, tiredness, other responsibilities. It's not a superpower or a flaw. It's an all-or-nothing attention system that doesn't have a reliable middle setting.",
+        tool: { label: "Set a Body Double timer", section: "regulate", tab: "toolkit", openTool: "bodydouble", nav: "helpme" }
+      },
+      {
+        n: 5, name: "Task paralysis",
+        tagline: "three things on the list. still can't move",
+        explanation: "You know what needs doing. You want to do it. Your body won't start. This isn't procrastination or laziness — it's a breakdown in the brain's initiation system. The task often feels too big, too vague, or too loaded with expectation. Breaking it into the smallest possible first step is the way through.",
+        tool: { label: "Break it down in Tasks", section: "mybrain", tab: "tasks", nav: "mystuff" }
+      },
+      {
+        n: 6, name: "Revenge bedtime procrastination",
+        tagline: "staying up late just to own a few quiet hours",
+        explanation: "After a day of meeting demands, masking, and performing, staying up late becomes the only time that feels truly yours. It's not self-destructive irrationality — it's your brain trying to reclaim autonomy and quiet. The cost is sleep. The need underneath is real.",
+        tool: { label: "Check your sensory levels", section: "regulate", tab: "sensory", nav: "helpme" }
+      },
+      {
+        n: 7, name: "Doom piles",
+        tagline: "the chair knows. the corner knows.",
+        explanation: "Objects accumulate in specific spots — the chair, the corner, the floor beside the bed. Out of sight means out of mind, so things get put somewhere visible. But visible doesn't mean processed. The pile grows. It's an object permanence and executive function issue, not a character flaw.",
+        tool: { label: "Try a Brain Dump", section: "mybrain", tab: "braindump", nav: "mystuff" }
+      },
+      {
+        n: 8, name: "Object permanence issues",
+        tagline: "if it's not visible, it doesn't exist right now",
+        explanation: "Out of sight genuinely means out of mind — not metaphorically. Medication you can't see won't be taken. Friends you don't contact don't feel present. This is why visible storage, open shelves, and reminders aren't just helpful but necessary. It's not neglect. It's neurological.",
+        tool: { label: "Set up Daily Life Stuff reminders", section: "mybrain", tab: "habits", nav: "mystuff" }
+      },
+      {
+        n: 9, name: "The wall of awful",
+        tagline: "a simple email feels like climbing something",
+        explanation: "A task that should take five minutes has accumulated so much emotional weight — from past failures, shame, avoidance — that approaching it feels physically overwhelming. The wall is real. It's built from every previous attempt and every associated feeling of failure.",
+        tool: { label: "Try a Brain Dump first", section: "mybrain", tab: "braindump", nav: "mystuff" }
+      },
+      {
+        n: 10, name: "Sensory overload",
+        tagline: "one sound. that's all it takes",
+        explanation: "The nervous system becomes overwhelmed by sensory input — sound, light, texture, smell, crowds, temperature. It's not hypersensitivity as a personality trait. It's a nervous system that processes sensory information more intensely than neurotypical brains. The only fix is reducing input.",
+        tool: { label: "Sensory check-in", section: "regulate", tab: "sensory", nav: "helpme" }
+      },
+      {
+        n: 11, name: "Emotional flooding",
+        tagline: "fine, then not fine, within the same breath",
+        explanation: "Emotions arrive fast, full, and all at once. There's no gentle build-up — just suddenly overwhelmed. This is sometimes called emotional dysregulation, but it's better understood as emotional intensity. The feelings are real and valid. The volume is just turned up much higher than average.",
+        tool: { label: "Check in on your mood", section: "regulate", tab: "mood", nav: "helpme" }
+      },
+      {
+        n: 12, name: "Analysis paralysis",
+        tagline: "asked what you want for lunch. system crash",
+        explanation: "Too many options, or the perceived importance of making the 'right' choice, causes complete shutdown. The brain gets caught in a loop of weighing possibilities and can't commit to any of them. It's not indecisiveness as a trait — it's an executive function overload.",
+        tool: { label: "Try a Brain Dump", section: "mybrain", tab: "braindump", nav: "mystuff" }
+      },
+      {
+        n: 13, name: "Waiting mode",
+        tagline: "one 4pm thing and the whole day belongs to it",
+        explanation: "When something is scheduled — even hours away — the brain can't relax into anything else. The upcoming event occupies working memory and makes real focus impossible. Time before the thing feels unusable. This is a working memory and time perception issue, not a mindset problem.",
+        tool: { label: "Set a Body Double timer", section: "regulate", tab: "toolkit", openTool: "bodydouble", nav: "helpme" }
+      },
+      {
+        n: 14, name: "Interest-based nervous system",
+        tagline: "'just do it' doesn't work when the brain won't ignite",
+        explanation: "ADHD brains are often motivated by interest, novelty, urgency, challenge, or passion — not importance or deadlines alone. If something isn't interesting or urgent, the brain genuinely cannot generate the same motivation a neurotypical brain might. This is physiological, not a character flaw.",
+        tool: { label: "Try the Dopamine section", section: "regulate", tab: "dopamine", nav: "helpme" }
+      },
+      {
+        n: 15, name: "Shutdown",
+        tagline: "words stop coming when everything gets too loud",
+        explanation: "When overwhelm reaches a threshold, the brain and body simply stop. Speech becomes difficult or impossible. Movement feels impossible. Emotions go flat. This is a protective neurological response, not manipulation or sulking. The person needs quiet, safety, reduced demands, and time.",
+        tool: { label: "Shutdown support", section: "regulate", tab: "toolkit", openTool: "shutdown", nav: "helpme" }
+      },
+      {
+        n: 16, name: "Masking",
+        tagline: "performing okay, every day, until there's nothing left underneath",
+        explanation: "Consciously or unconsciously suppressing natural ND behaviours to appear neurotypical. Forcing eye contact. Scripting conversations. Suppressing stims. Performing focus. Masking is exhausting and cumulative. The cost is burnout, loss of identity, and sometimes not knowing who you are without the mask.",
+        tool: { label: "Understand your PDA profile", section: "communication", tab: "pda", nav: "people" }
+      },
+      {
+        n: 17, name: "Justice sensitivity",
+        tagline: "you cannot let it go. it's not a choice",
+        explanation: "An intense, visceral reaction to injustice — perceived or real. Rules being broken, unfairness, hypocrisy, people being treated badly. The feeling is overwhelming and urgent. It's not a personality quirk. It's a deeply wired neurological response to perceived violation of fairness.",
+        tool: { label: "Check your mood", section: "regulate", tab: "mood", nav: "helpme" }
+      },
+      {
+        n: 18, name: "Stimming",
+        tagline: "the small movements that bring you back to yourself",
+        explanation: "Repetitive sensory movements or sounds — rocking, tapping, flapping, humming, clicking. Stimming regulates the nervous system. It reduces anxiety, processes emotion, and maintains focus. It is not something to be stopped or suppressed. It is your body doing exactly what it needs to do.",
+        tool: { label: "Try the Stim Space", section: "regulate", tab: "toolkit", openTool: "stim", nav: "helpme" }
+      },
+      {
+        n: 19, name: "Info-dumping",
+        tagline: "it's not a monologue. it's what love sounds like for you",
+        explanation: "Sharing extensive information about a topic you care about — all of it, right now, with whoever is nearby. It's not showing off or ignoring social cues. It's how ND brains express enthusiasm, connection, and care. When someone info-dumps to you, they are trusting you with something that matters to them.",
+        tool: { label: "Go to Communication", section: "communication", tab: "translate", nav: "people" }
+      },
+      {
+        n: 20, name: "The ADHD tax",
+        tagline: "the late fees. the duplicates. the subscription you forgot again",
+        explanation: "The extra money, time, and energy spent because of executive dysfunction. Late fees because the bill was forgotten. Replacing things that were lost. Buying duplicates of things you have but can't find. Subscriptions running for months unforgotten. It's a real financial and emotional cost, and it's not a moral failing.",
+        tool: { label: "Set up Daily Life Stuff", section: "mybrain", tab: "habits", nav: "mystuff" }
+      },
+    ];
+
+    const [expanded, setExpanded] = useState(null);
+
+    return React.createElement('div', null,
+      // Header
+      React.createElement('div', { style: { background: gt(C.pink + '18', C.purple + '10', 135), border: `1.5px solid ${C.pink}44`, borderRadius: 16, padding: '18px 16px', marginBottom: 20 } },
+        React.createElement('p', { style: { color: C.pink, fontFamily: 'Nunito', fontWeight: 900, fontSize: 20, margin: '0 0 8px' } }, '✨ Finally Have Names'),
+        React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 14, margin: '0 0 10px', lineHeight: 1.7 } }, '20 ADHD and neurodivergent experiences that finally have words. Tap any one to read more — and find support inside the app.'),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontWeight: 700, fontSize: 12, fontStyle: 'italic', margin: 0 } }, '"You weren\'t failing. You just didn\'t have the language yet. Now you do."')
+      ),
+
+      // All 20 items
+      NAMES.map(item => React.createElement('div', { key: item.n, style: { marginBottom: 8 } },
+        // Row button
+        React.createElement('button', {
+          onClick: () => setExpanded(e => e === item.n ? null : item.n),
+          style: {
+            display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left',
+            background: expanded === item.n ? C.pink + '15' : C.card,
+            border: `1.5px solid ${expanded === item.n ? C.pink : C.border}`,
+            borderRadius: expanded === item.n ? '14px 14px 0 0' : 14,
+            padding: '14px 16px', cursor: 'pointer', transition: 'all 0.2s',
+          }
+        },
+          React.createElement('div', { style: { width: 28, height: 28, borderRadius: 8, background: C.pink + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 } },
+            React.createElement('span', { style: { color: C.pink, fontFamily: 'Nunito', fontWeight: 800, fontSize: 12 } }, item.n)
+          ),
+          React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+            React.createElement('div', { style: { color: expanded === item.n ? C.pink : C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15 } }, item.name),
+            React.createElement('div', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, lineHeight: 1.4 } }, item.tagline)
+          ),
+          React.createElement('span', { style: { color: C.muted, fontSize: 13, transform: expanded === item.n ? 'rotate(180deg)' : 'none', display: 'inline-block', transition: 'transform 0.2s' } }, '▾')
+        ),
+
+        // Expanded content
+        expanded === item.n && React.createElement('div', { style: { background: C.card, border: `1.5px solid ${C.pink}`, borderTop: 'none', borderRadius: '0 0 14px 14px', padding: '16px 16px 18px' } },
+          React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 14, lineHeight: 1.75, margin: '0 0 16px' } }, item.explanation),
+          item.tool && React.createElement('button', {
+            onClick: () => {
+              navigateTo(item.tool.section, item.tool.tab);
+              setBottomNav(item.tool.nav);
+              if (item.tool.openTool) setOpenTool(item.tool.openTool);
+              setExpanded(null);
+            },
+            style: { ...btn(C.pink, { width: '100%', padding: 12, fontSize: 14 }) }
+          }, '→ ' + item.tool.label)
+        )
+      )),
+
+      // Footer
+      React.createElement('div', { style: { textAlign: 'center', padding: '20px 0 8px' } },
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 13, fontStyle: 'italic', lineHeight: 1.7 } }, '"You weren\'t failing.\nYou just didn\'t have the language yet.\nNow you do."')
+      )
+    );
+  }
+
   function renderTab(tabId) {
     const map = {
       rsd: renderRSD,
@@ -2965,6 +3181,7 @@ function App() {
       toolkit: renderToolkit,
       disclosure: renderDisclosure,
       safetyplan: renderSafetyPlan,
+      names: renderFinallyHaveNames,
     };
     return map[tabId] ? map[tabId]() : null;
   }
@@ -3238,7 +3455,7 @@ function App() {
 
         // ── MORE ──────────────────────────────────────────────────────────────
         bottomNav === 'more' && React.createElement('div', null,
-          activeTab && (section === 'aboutme' || section === 'safetyplan')
+          activeTab && (section === 'aboutme' || section === 'safetyplan' || section === 'names')
             ? React.createElement('div', null,
                 React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 } },
                   React.createElement('button', { onClick: () => { setActiveTab(null); setSection(null); }, style: { background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 20, padding: '6px 14px', color: C.muted, cursor: 'pointer', fontFamily: 'Nunito', fontSize: 13 } }, '← Back'),
@@ -3247,8 +3464,9 @@ function App() {
               )
             : React.createElement('div', null,
                 React.createElement('h2', { style: { color: C.purple, fontFamily: 'Nunito', fontWeight: 900, fontSize: 22, margin: '0 0 4px' } }, '☰ More'),
-                React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 20px' } }, 'Safety plan, about me, and games'),
+                React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 20px' } }, 'Safety plan, about me, and more'),
                 [
+                  { icon: '✨', label: 'Finally Have Names', desc: '20 ADHD & ND experiences that finally have words', section: 'names', tab: 'names', color: C.pink },
                   { icon: '🛟', label: 'Safety Plan', desc: 'Your personal crisis plan — written when you\'re calm', section: 'safetyplan', tab: 'safetyplan', color: C.purple },
                   { icon: '💙', label: 'About Me', desc: 'Scripts to explain yourself to others', section: 'aboutme', tab: 'disclosure', color: C.blue },
                   { icon: '🎮', label: 'Games', desc: 'Snake, Block Drop, Nonogram — dopamine the fun way', section: 'regulate', tab: 'dopamine', color: C.pink },
