@@ -3477,7 +3477,10 @@ function App() {
                   { icon: '💙', label: 'About Me', desc: 'Scripts to explain yourself to others', section: 'aboutme', tab: 'disclosure', color: C.blue },
                   { icon: '🎮', label: 'Games', desc: 'Snake, Block Drop, Nonogram — dopamine the fun way', section: 'regulate', tab: 'dopamine', color: C.pink },
                 ].map(item => React.createElement('button', {
-                  key: item.tab, onClick: () => { navigateTo(item.section, item.tab); if (item.section === 'regulate') setBottomNav('helpme'); },
+                  key: item.tab, onClick: () => {
+                    if (item.section === 'regulate') { navigateTo(item.section, item.tab); setBottomNav('helpme'); }
+                    else { setSection(item.section); setActiveTab(item.tab); }
+                  },
                   style: { display: 'flex', alignItems: 'center', gap: 16, width: '100%', background: C.card, border: `1.5px solid ${C.border}`, borderRadius: 18, padding: '18px', marginBottom: 10, cursor: 'pointer', textAlign: 'left' }
                 },
                   React.createElement('div', { style: { width: 50, height: 50, borderRadius: 14, background: item.color + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 } }, item.icon),
