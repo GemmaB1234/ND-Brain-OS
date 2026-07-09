@@ -895,22 +895,37 @@ function App() {
 
   async function loadUserData(token) {
     try {
-      const profile = await supabase('GET', `profiles?id=eq.${user?.id || ''}&select=*`, null, token);
+      const uid = user?.id || '';
+      const profile = await supabase('GET', `profiles?id=eq.${uid}&select=*`, null, token);
       if (profile && profile[0]) {
         if (profile[0].theme_id) setThemeId(profile[0].theme_id);
         if (profile[0].plain_language !== undefined) setPlainLanguage(profile[0].plain_language);
         if (profile[0].points) setPoints(profile[0].points);
         if (profile[0].screen && profile[0].screen !== 'welcome') setScreen(profile[0].screen);
       }
-      const taskData = await supabase('GET', `tasks?user_id=eq.${user?.id || ''}&order=created_at`, null, token);
+      const taskData = await supabase('GET', `tasks?user_id=eq.${uid}&order=created_at`, null, token);
       if (taskData && taskData.length) setTasks(taskData.map(t => ({ id: t.id, text: t.text, tier: t.tier, done: t.done, steps: t.steps })));
-      const habitData = await supabase('GET', `habits?user_id=eq.${user?.id || ''}&order=created_at`, null, token);
+      const habitData = await supabase('GET', `habits?user_id=eq.${uid}&order=created_at`, null, token);
       if (habitData && habitData.length) setHabits(habitData.map(h => ({ id: h.id, emoji: h.emoji, text: h.text, done: h.done, lastDone: h.last_done })));
-      const moodData = await supabase('GET', `mood_history?user_id=eq.${user?.id || ''}&order=created_at.desc&limit=30`, null, token);
+      const moodData = await supabase('GET', `mood_history?user_id=eq.${uid}&order=created_at.desc&limit=30`, null, token);
       if (moodData && moodData.length) setMoodHistory(moodData.map(m => ({ mood: m.mood, note: m.note, date: m.created_at })));
-      const spData = await supabase('GET', `safety_plans?user_id=eq.${user?.id || ''}&select=*`, null, token);
+      const spData = await supabase('GET', `safety_plans?user_id=eq.${uid}&select=*`, null, token);
       if (spData && spData[0]) { setSafetyPlan(spData[0].plan); setSafetyPlanSaved(spData[0].saved); setSafetyPlanEditing(!spData[0].saved); }
+      const wpData = await supabase('GET', `workplace_passports?user_id=eq.${uid}&select=*`, null, token);
+      if (wpData && wpData[0]) { setWorkPassport(wpData[0].passport); setPassportSaved(wpData[0].saved); }
     } catch(e) { console.log('Load error', e); }
+  }
+
+  async function saveWorkPassport() {
+    if (!user || !authToken) return;
+    try {
+      const existing = await supabase('GET', `workplace_passports?user_id=eq.${user.id}&select=id`, null, authToken);
+      if (existing && existing[0]) {
+        await supabase('PATCH', `workplace_passports?user_id=eq.${user.id}`, { passport: workPassport, saved: true, updated_at: new Date().toISOString() }, authToken);
+      } else {
+        await supabase('POST', 'workplace_passports', { user_id: user.id, passport: workPassport, saved: true }, authToken);
+      }
+    } catch(e) { console.log('Passport save error', e); }
   }
 
   async function handleSignUp() {
@@ -3322,7 +3337,7 @@ Thank you for your support.
         passportField('emergencyHow', 'How to contact them', 'e.g. Text only, or call after 9am'),
         passportField('additionalNotes', 'Anything else', 'Anything else you\'d like your employer to know', true),
         React.createElement('button', {
-          onClick: () => { setPassportSaved(true); awardPoints(25, 'Workplace Passport saved. That took courage and self-knowledge. 💜'); },
+          onClick: async () => { setPassportSaved(true); await saveWorkPassport(); awardPoints(25, 'Workplace Passport saved. That took courage and self-knowledge. 💜'); },
           style: { ...btn(C.purple, { width: '100%', padding: 14, fontSize: 15, marginTop: 8 }) }
         }, '💾 Save my Workplace Passport')
       );
