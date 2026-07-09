@@ -882,6 +882,7 @@ function App() {
   // Save nickname whenever it changes
   useEffect(() => {
     localStorage.setItem('ndbrainos_nickname', appNickname);
+    if (user && authToken) saveUserSettings(appNickname);
   }, [appNickname]);
 
   // Save session to localStorage when auth changes
@@ -913,7 +914,24 @@ function App() {
       if (spData && spData[0]) { setSafetyPlan(spData[0].plan); setSafetyPlanSaved(spData[0].saved); setSafetyPlanEditing(!spData[0].saved); }
       const wpData = await supabase('GET', `workplace_passports?user_id=eq.${uid}&select=*`, null, token);
       if (wpData && wpData[0]) { setWorkPassport(wpData[0].passport); setPassportSaved(wpData[0].saved); }
+      const settingsData = await supabase('GET', `user_settings?user_id=eq.${uid}&select=*`, null, token);
+      if (settingsData && settingsData[0]) {
+        if (settingsData[0].app_nickname) setAppNickname(settingsData[0].app_nickname);
+      }
     } catch(e) { console.log('Load error', e); }
+  }
+
+  async function saveUserSettings(nickname) {
+    if (!user || !authToken) return;
+    try {
+      const existing = await supabase('GET', `user_settings?user_id=eq.${user.id}&select=id`, null, authToken);
+      const data = { app_nickname: nickname !== undefined ? nickname : appNickname, updated_at: new Date().toISOString() };
+      if (existing && existing[0]) {
+        await supabase('PATCH', `user_settings?user_id=eq.${user.id}`, data, authToken);
+      } else {
+        await supabase('POST', 'user_settings', { user_id: user.id, ...data }, authToken);
+      }
+    } catch(e) { console.log('Settings save error', e); }
   }
 
   async function saveWorkPassport() {
