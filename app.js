@@ -776,7 +776,12 @@ function App() {
   const [sensoryRatings, setSensoryRatings] = useState({});
 
   // Dopamine sub-nav
-  const [dopamineTab, setDopamineTab] = useState("science");
+  const [dopamineTab, setDopamineTab] = useState("menu");
+  const EMPTY_MENU = { starters: [], mains: [], sides: [], desserts: [] };
+  const [dopamineMenu, setDopamineMenu] = useState(() => { try { const s = JSON.parse(localStorage.getItem('steady_dopamine_menu') || 'null'); return s && typeof s === 'object' ? { ...EMPTY_MENU, ...s } : EMPTY_MENU; } catch(e) { return EMPTY_MENU; } });
+  const [menuDraft, setMenuDraft] = useState({ cat: null, text: '' });
+  const [menuPick, setMenuPick] = useState(null);
+  const [menuEnergy, setMenuEnergy] = useState('any');
   const [gameTimer, setGameTimer] = useState(null);
   const [gameTimerMins, setGameTimerMins] = useState(null);
   const [gameTimerLeft, setGameTimerLeft] = useState(0);
@@ -893,6 +898,8 @@ function App() {
       if (spData && spData[0]) { setSafetyPlan(spData[0].plan); setSafetyPlanSaved(spData[0].saved); setSafetyPlanEditing(!spData[0].saved); }
       const wpData = await sbRest('GET', `workplace_passports?user_id=eq.${uid}&select=*`, null, token);
       if (wpData && wpData[0]) { setWorkPassport(wpData[0].passport); setPassportSaved(wpData[0].saved); }
+      const dmData = await sbRest('GET', `dopamine_menus?user_id=eq.${uid}&select=*`, null, token);
+      if (Array.isArray(dmData) && dmData[0] && dmData[0].menu) { const m = { ...EMPTY_MENU, ...dmData[0].menu }; setDopamineMenu(m); try { localStorage.setItem('steady_dopamine_menu', JSON.stringify(m)); } catch(e) {} }
       const settingsData = await sbRest('GET', `user_settings?user_id=eq.${uid}&select=*`, null, token);
       if (settingsData && settingsData[0]) {
         if (settingsData[0].app_nickname) setAppNickname(settingsData[0].app_nickname);
@@ -911,6 +918,19 @@ function App() {
         await sbRest('POST', 'user_settings', { user_id: user.id, ...data }, authToken);
       }
     } catch(e) { console.log('Settings save error', e); }
+  }
+
+  async function saveDopamineMenu(menu) {
+    try { localStorage.setItem('steady_dopamine_menu', JSON.stringify(menu)); } catch(e) {}
+    if (!user || !authToken) return;
+    try {
+      const existing = await sbRest('GET', `dopamine_menus?user_id=eq.${user.id}&select=id`, null, authToken);
+      if (Array.isArray(existing) && existing[0]) {
+        await sbRest('PATCH', `dopamine_menus?user_id=eq.${user.id}`, { menu, updated_at: new Date().toISOString() }, authToken);
+      } else if (Array.isArray(existing)) {
+        await sbRest('POST', 'dopamine_menus', { user_id: user.id, menu }, authToken);
+      }
+    } catch(e) { console.log('Menu save error', e); }
   }
 
   async function saveWorkPassport() {
@@ -977,6 +997,7 @@ function App() {
     const sec = SECTIONS[sectionId];
     const tab = sec?.tabs.find(t => t.id === tabId);
     if (tab) setLastUsed({ section: sectionId, tab: tabId, icon: tab.icon, label: tab.name, color: sec.color });
+    if (sectionId === 'work') { setSection(null); setActiveTab(null); setBottomNavRaw('work'); return; }
     setSection(sectionId);
     setActiveTab(tabId);
   }
@@ -2318,13 +2339,75 @@ function App() {
 
   function renderDopamine() {
     const tabs = [
-      { id: "science", label: "🧬 Science" }, { id: "fixes", label: "💚 Good fixes" },
+      { id: "menu", label: "🍽️ My Menu" }, { id: "science", label: "🧬 Science" }, { id: "fixes", label: "💚 Good fixes" },
       { id: "traps", label: "🚨 Traps" } // Games tab switched off for now (code kept below, restore by adding { id: "games", label: "🎮 Distraction" })
     ];
     return React.createElement('div', null,
       React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto' } },
         tabs.map(t => React.createElement('button', { key: t.id, onClick: () => setDopamineTab(t.id), style: { ...pill(dopamineTab === t.id, C.yellow), whiteSpace: 'nowrap' } }, t.label))
       ),
+      dopamineTab === "menu" && (() => {
+        const CATS = [
+          { id: 'starters', icon: '🥄', name: 'Starters', hint: 'Under 2 minutes. Easy to start when you have no energy.', color: C.teal, ideas: ['Play one favourite song', 'Cold water on wrists', 'Stretch for 60 seconds', 'Step outside for 2 minutes', 'Text someone a kind emoji'] },
+          { id: 'mains', icon: '🍲', name: 'Mains', hint: '10 to 20 minutes. Fills you up properly.', color: C.yellow, ideas: ['10 minute walk', 'Dance to 2 songs', 'Tidy one surface', 'Call a friend', 'Make a proper snack'] },
+          { id: 'sides', icon: '🥗', name: 'Sides', hint: 'Do alongside something boring.', color: C.blue, ideas: ['Podcast while folding washing', 'Music while cooking', 'Fidget toy on a call', 'Body double on video'] },
+          { id: 'desserts', icon: '🍰', name: 'Desserts', hint: 'Nice, but best with a time limit.', color: C.pink, ideas: ['One episode, then stop', 'Scroll for 10 minutes (timer on)', 'A game for 15 minutes (timer on)'] },
+        ];
+        const save = (m) => { setDopamineMenu(m); saveDopamineMenu(m); };
+        const addItem = (cat, text) => { const v = (text || '').trim(); if (!v || dopamineMenu[cat].includes(v)) return; save({ ...dopamineMenu, [cat]: [...dopamineMenu[cat], v] }); };
+        const removeItem = (cat, i) => save({ ...dopamineMenu, [cat]: dopamineMenu[cat].filter((_, k) => k !== i) });
+        const ENERGY = [
+          { id: 'low', label: '🪫 Low', cats: ['starters'] },
+          { id: 'some', label: '🔋 Some', cats: ['starters', 'mains', 'sides'] },
+          { id: 'any', label: '⚡ Anything', cats: ['starters', 'mains', 'sides', 'desserts'] },
+        ];
+        const pool = () => {
+          const cats = (ENERGY.find(e => e.id === menuEnergy) || ENERGY[2]).cats;
+          return cats.flatMap(c => dopamineMenu[c].map(text => ({ cat: c, text })));
+        };
+        const pickOne = () => {
+          const items = pool();
+          if (!items.length) { setMenuPick({ empty: true }); return; }
+          const others = items.length > 1 && menuPick && menuPick.text ? items.filter(i => i.text !== menuPick.text) : items;
+          setMenuPick(others[Math.floor(Math.random() * others.length)]);
+        };
+        const total = CATS.reduce((n, c) => n + dopamineMenu[c.id].length, 0);
+        return React.createElement('div', null,
+          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.6, margin: '0 0 14px' } }, 'A dopamine menu is your own list of things that give your brain a lift, sorted by how much energy they take. Build yours when you feel okay, then use it when you\'re flat or stuck.'),
+          // pick for me
+          React.createElement('div', { style: { ...card({ marginBottom: 16, borderColor: C.yellow + '66', background: gt(C.yellow + '12', C.teal + '0a', 135) }) } },
+            React.createElement('p', { style: { color: C.yellow, fontFamily: 'Nunito', fontWeight: 900, fontSize: 16, margin: '0 0 8px' } }, '🎲 Pick one for me'),
+            React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, margin: '0 0 8px' } }, 'How much energy have you got?'),
+            React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 12 } }, ENERGY.map(e => React.createElement('button', { key: e.id, onClick: () => { setMenuEnergy(e.id); setMenuPick(null); }, style: { ...pill(menuEnergy === e.id, C.yellow), flex: 1 } }, e.label))),
+            menuPick && menuPick.empty && React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 10px' } }, total === 0 ? 'Your menu is empty. Add a few ideas below first (tap the suggestions).' : 'Nothing on your menu fits that energy yet. Add something below.'),
+            menuPick && menuPick.text && React.createElement('div', { style: { background: C.bg, border: `1.5px solid ${C.yellow}66`, borderRadius: 14, padding: '14px', marginBottom: 10 } },
+              React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' } }, (CATS.find(c => c.id === menuPick.cat) || {}).name),
+              React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 18, margin: 0 } }, menuPick.text)
+            ),
+            React.createElement('div', { style: { display: 'flex', gap: 8 } },
+              React.createElement('button', { onClick: pickOne, style: { ...btn(C.yellow, { flex: 1, padding: 12 }) } }, menuPick && menuPick.text ? '↻ Not that one' : '🎲 Pick for me'),
+              menuPick && menuPick.text && React.createElement('button', { onClick: () => { awardPoints(5, 'You gave your brain a boost.'); setMenuPick(null); }, style: { ...btn(C.teal, { flex: 1, padding: 12 }) } }, '✓ I\'ll do it')
+            )
+          ),
+          // categories
+          CATS.map(c => React.createElement('div', { key: c.id, style: { ...card({ marginBottom: 12, borderColor: c.color + '44' }) } },
+            React.createElement('p', { style: { color: c.color, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 2px' } }, c.icon + ' ' + c.name),
+            React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, margin: '0 0 10px' } }, c.hint),
+            dopamineMenu[c.id].map((item, i) => React.createElement('div', { key: item + i, style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, background: c.color + '10', borderRadius: 10, padding: '8px 10px' } },
+              React.createElement('span', { style: { flex: 1, color: C.text, fontFamily: 'Nunito Sans', fontSize: 14 } }, item),
+              React.createElement('button', { onClick: () => removeItem(c.id, i), 'aria-label': 'Remove', style: { background: 'transparent', border: 'none', color: C.muted, fontSize: 16, cursor: 'pointer' } }, '✕')
+            )),
+            React.createElement('div', { style: { display: 'flex', gap: 8, marginTop: 8 } },
+              React.createElement('input', { value: menuDraft.cat === c.id ? menuDraft.text : '', onChange: e => setMenuDraft({ cat: c.id, text: e.target.value }), onKeyDown: e => { if (e.key === 'Enter') { addItem(c.id, menuDraft.text); setMenuDraft({ cat: null, text: '' }); } }, placeholder: 'Add your own…', style: { ...input({ flex: 1, margin: 0 }) } }),
+              React.createElement('button', { onClick: () => { if (menuDraft.cat === c.id) { addItem(c.id, menuDraft.text); setMenuDraft({ cat: null, text: '' }); } }, style: { ...btn(c.color, { padding: '8px 14px' }) } }, 'Add')
+            ),
+            c.ideas.filter(x => !dopamineMenu[c.id].includes(x)).length > 0 && React.createElement('div', { style: { marginTop: 10 } },
+              React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 11, margin: '0 0 6px' } }, 'Tap to add an idea:'),
+              React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6 } }, c.ideas.filter(x => !dopamineMenu[c.id].includes(x)).map(x => React.createElement('button', { key: x, onClick: () => addItem(c.id, x), style: { background: 'transparent', border: `1px dashed ${c.color}88`, color: c.color, borderRadius: 16, padding: '5px 10px', fontFamily: 'Nunito Sans', fontSize: 12, cursor: 'pointer' } }, '+ ' + x)))
+            )
+          ))
+        );
+      })(),
       dopamineTab === "science" && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
         DOPAMINE_SCIENCE.map((s, i) => React.createElement('div', { key: i, style: card() },
           React.createElement('div', { style: { display: 'flex', gap: 10, alignItems: 'center', marginBottom: 8 } },
@@ -3080,8 +3163,8 @@ function App() {
       return React.createElement('div', { style: { marginBottom: 4 } },
         React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' } }, label),
         multiline
-          ? React.createElement('textarea', { value: wp[key], onChange: e => setWp(key, e.target.value), placeholder, style })
-          : React.createElement('input', { value: wp[key], onChange: e => setWp(key, e.target.value), placeholder, style })
+          ? React.createElement('textarea', { value: wp[key] || '', onChange: e => setWp(key, e.target.value), placeholder, style })
+          : React.createElement('input', { value: wp[key] || '', onChange: e => setWp(key, e.target.value), placeholder, style })
       );
     }
 
@@ -3091,6 +3174,7 @@ function App() {
         React.createElement('p', { style: { color: C.blue, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, margin: '0 0 6px' } }, '💼 At Work'),
         React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: 0, lineHeight: 1.6 } }, 'You have rights. You have options. And you don\'t have to navigate this alone. This section covers everything from your legal rights to practical scripts, workplace strategies, and your personal Workplace Passport.')
       ),
+      sectionBtn('atw', '🏛️', 'Access to Work: get ready', 'Prepare for your DWP application: what to have ready, what to say, and a support summary to share', C.orange),
       sectionBtn('rights', '⚖️', 'Your Rights', 'Equality Act 2010, what employers must do, and what you\'re entitled to', C.blue),
       sectionBtn('adjustments', '🔧', 'Reasonable Adjustments', 'What they are, what to ask for, and how to ask for them', C.teal),
       sectionBtn('passport', '📋', 'My Workplace Passport', 'A personal document to share with your employer — fill in once, use anywhere', C.purple),
@@ -3193,6 +3277,49 @@ Thank you for your support.
     );
 
     // ── PASSPORT ─────────────────────────────────────────────────────────────
+    if (workView === 'atw') {
+      const atwSummary = () => [
+        'ACCESS TO WORK: MY SUPPORT SUMMARY', '═'.repeat(40), '',
+        wp.name ? `Name: ${wp.name}` : '', wp.role ? `Job: ${wp.role}` : '', wp.employer ? `Employer: ${wp.employer}` : '',
+        wp.diagnosisPublic ? `\nMy neurodivergent profile: ${wp.diagnosisPublic}` : '',
+        wp.atwImpact ? `\nHOW THIS AFFECTS MY WORK\n${wp.atwImpact}` : '',
+        [wp.challenges1, wp.challenges2, wp.challenges3].some(Boolean) ? '\nWHAT I FIND HARD AT WORK\n' + [wp.challenges1, wp.challenges2, wp.challenges3].filter(Boolean).map(s => `• ${s}`).join('\n') : '',
+        wp.atwTried ? `\nWHAT MY EMPLOYER HAS ALREADY TRIED OR PROVIDED\n${wp.atwTried}` : '',
+        [wp.adjustment1, wp.adjustment2, wp.adjustment3, wp.adjustment4, wp.adjustment5].some(Boolean) ? '\nADJUSTMENTS THAT HELP ME\n' + [wp.adjustment1, wp.adjustment2, wp.adjustment3, wp.adjustment4, wp.adjustment5].filter(Boolean).map(s => `• ${s}`).join('\n') : '',
+        wp.atwSupport ? `\nSUPPORT I THINK WOULD HELP\n${wp.atwSupport}` : '',
+      ].filter(l => l !== '').join('\n');
+      return React.createElement('div', null,
+        backBtn(),
+        React.createElement('h3', { style: { color: C.orange, fontFamily: 'Nunito', fontWeight: 900, fontSize: 18, margin: '0 0 6px' } }, '🏛️ Access to Work: get ready'),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.6, margin: '0 0 16px' } }, 'Access to Work is a government grant that can pay for extra support at work because of a disability or health condition, including neurodivergence and mental health. You don\'t pay it back and it doesn\'t affect other benefits.'),
+        infoCard('✅', 'Have these ready', C.teal, null, ['Your National Insurance number', 'Your workplace address and postcode', 'A work contact: name, email and phone (usually your manager)', 'If self-employed: your Unique Taxpayer Reference (UTR)']),
+        infoCard('💡', 'What it can help pay for', C.blue, null, ['A job coach, note taker or support worker', 'Equipment, software and adaptations', 'Support for a mental health condition', 'Disability awareness training for colleagues', 'Travel to work if you can\'t use public transport']),
+        infoCard('⚠️', 'Good to know', C.orange, 'Your employer\'s legal duty to make reasonable adjustments is separate. Access to Work doesn\'t cover those, and your employer may be asked to share some costs. A case manager will explain this. They will contact you and your employer, and may arrange a workplace assessment (phone, video or in person).'),
+        infoCard('📞', 'What to say when you call', C.purple, null, ['Say you are neurodivergent and what you do at work', 'Give 2 or 3 real examples of what is hard (use your summary below)', 'Say what you think would help, e.g. a coach or software', 'Ask them to explain the assessment and what happens next']),
+        React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 16 } },
+          React.createElement('a', { href: 'tel:08001217479', style: { ...btn(C.orange, { flex: 1, textAlign: 'center', textDecoration: 'none', padding: 12 }) } }, '📞 0800 121 7479'),
+          React.createElement('a', { href: 'https://www.gov.uk/access-to-work', target: '_blank', rel: 'noopener noreferrer', style: { ...btn(C.blue, { flex: 1, textAlign: 'center', textDecoration: 'none', padding: 12 }) } }, 'Apply on GOV.UK ↗')
+        ),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 11, margin: '0 0 14px' } }, 'Lines are open Monday to Friday, 9am to 5pm. Details checked on GOV.UK in November 2026 and can change.'),
+        React.createElement('div', { style: { ...card({ marginBottom: 12, borderColor: C.orange + '55' }) } },
+          React.createElement('p', { style: { color: C.orange, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 4px' } }, '📝 My support summary'),
+          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, lineHeight: 1.6, margin: '0 0 12px' } }, 'Fill this in once. It also pulls in your Workplace Passport, so your name, challenges and adjustments carry across.'),
+          passportField('name', 'Your name', 'Full name'),
+          passportField('role', 'Job title / role', 'e.g. Support Worker'),
+          passportField('employer', 'Employer', 'Where you work'),
+          passportField('atwImpact', 'How being neurodivergent affects my work', 'Real examples: e.g. I lose track of time in meetings and miss deadlines when instructions are only spoken', true),
+          passportField('atwTried', 'What my employer has already tried or provided', 'e.g. A quiet desk. Agendas before meetings. Nothing yet.', true),
+          passportField('atwSupport', 'Support I think would help', 'e.g. A job coach for planning, speech-to-text software, noise-cancelling headphones', true),
+          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 11, margin: '0 0 10px' } }, 'Challenges and adjustments come from your Workplace Passport. Edit them there.'),
+          React.createElement('div', { style: { display: 'flex', gap: 8 } },
+            React.createElement('button', { onClick: async () => { await saveWorkPassport(); setToast('Saved'); setTimeout(() => setToast(null), 2000); }, style: { ...btn(C.teal, { flex: 1, padding: 12 }) } }, '💾 Save'),
+            React.createElement('button', { onClick: () => { try { navigator.clipboard.writeText(atwSummary()).then(() => { setToast('Summary copied. Paste it into an email or document.'); setTimeout(() => setToast(null), 2500); }); } catch(e) {} }, style: { ...btn(C.orange, { flex: 1, padding: 12 }) } }, '📋 Copy summary')
+          )
+        ),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 11, lineHeight: 1.6, margin: '8px 0 0' } }, 'This is general information, not legal or benefits advice. Your Access to Work case manager and organisations such as Acas can advise on your situation.')
+      );
+    }
+
     if (workView === 'passport') {
       if (passportSaved) return React.createElement('div', null,
         backBtn(),
@@ -3626,7 +3753,7 @@ Thank you for your support.
     { title: 'Calm my body and brain', color: C.yellow, items: [['regulate','mood'],['regulate','sensory'],['regulate','dopamine'],['regulate','toolkit']] },
     { title: 'When people are hard', color: C.pink, items: [['communication','rsd'],['communication','translate'],['communication','decode'],['communication','pda']] },
     { title: 'Get things out of my head', color: C.teal, items: [['mybrain','tasks'],['mybrain','braindump'],['mybrain','habits']] },
-    { title: 'Explain myself', color: C.blue, items: [['aboutme','disclosure'],['work','work']] },
+    { title: 'Explain myself', color: C.blue, items: [['aboutme','disclosure']] },
   ];
   const navRow = (key, icon, name, desc, color, onClick) => React.createElement('button', {
     key, onClick,
@@ -3882,6 +4009,13 @@ Thank you for your support.
           ))
         )),
 
+        // ── WORK ─────────────────────────────────────────────────────────────
+        bottomNav === 'work' && React.createElement('div', null,
+          React.createElement('h2', { style: { color: C.blue, fontFamily: 'Nunito', fontWeight: 900, fontSize: 22, margin: '0 0 4px' } }, '💼 Work'),
+          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 16px' } }, 'Rights, adjustments, your passport and Access to Work support'),
+          renderWork()
+        ),
+
         // ── MY STEADY ────────────────────────────────────────────────────────
         bottomNav === 'mysteady' && (inTabView ? tabView() : React.createElement('div', null,
           React.createElement('h2', { style: { color: C.purple, fontFamily: 'Nunito', fontWeight: 900, fontSize: 22, margin: '0 0 4px' } }, '💙 My ' + (appNickname || 'Steady')),
@@ -3930,6 +4064,7 @@ Thank you for your support.
         [
           { id: 'home', icon: '🏠', label: 'Home' },
           { id: 'tools', icon: '🧰', label: 'Tools' },
+          { id: 'work', icon: '💼', label: 'Work' },
           { id: 'mysteady', icon: '💙', label: 'My ' + (appNickname || 'Steady') },
         ].map(tab => React.createElement('button', {
           key: tab.id,
