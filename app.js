@@ -704,6 +704,8 @@ function App() {
   const [fbReply, setFbReply] = useState(false);
   const [fbStatus, setFbStatus] = useState('idle'); // idle | sending | sent | error
   const [packOpen, setPackOpen] = useState(null);
+  const [cycleGroupOpen, setCycleGroupOpen] = useState(false);
+  const [learnOpen, setLearnOpen] = useState(false);
   const [plusStatus, setPlusStatus] = useState(() => { try { return localStorage.getItem('steady_menuplus_waitlist') ? 'joined' : 'idle'; } catch(e) { return 'idle'; } }); // idle | sending | joined | error
   const [points, setPoints] = useState(0);
   const [toast, setToast] = useState(null);
@@ -2394,10 +2396,10 @@ function App() {
           { id: 'ba', icon: '🌱', name: 'Small steps for low mood', color: C.green || C.teal, basis: 'Based on: behavioural activation, which has good clinical evidence', note: 'The idea: do one small thing first, and motivation often follows rather than comes before. Pick something tiny.', items: [['starters','Open the curtains or step outside for 2 minutes'],['starters','Put on one song you used to love'],['mains','Do one 10 minute thing you used to enjoy'],['mains','Short walk, no phone'],['mains','Text a friend and arrange a tiny plan'],['sides','Do a boring chore with a good podcast on']] },
           { id: 'ibns', icon: '🔥', name: 'Interest, novelty, challenge, urgency', color: C.orange, basis: 'Based on: the "interest-based nervous system" idea from ADHD communities. A helpful framework, not a proven clinical model', note: 'Many ADHD brains get going through interest, newness, challenge or a deadline rather than importance. Use these to get unstuck.', items: [['starters','Race a 5 minute timer on one task'],['starters','Try a new route or a new song'],['mains','Turn a task into a game with a score'],['mains','Learn one new thing about a topic you love'],['sides','Body double: work alongside someone on video'],['desserts','A hobby session, with a timer']] },
           { id: 'connect', icon: '💬', name: 'Connection and body doubling', color: C.blue, basis: 'Based on: peer support and co-working ideas', note: 'Low-pressure ways to feel less alone, without needing to be "on".', items: [['starters','Send a meme or kind emoji to someone'],['starters','Voice note instead of typing'],['sides','Co-work with a friend on a call, cameras optional'],['mains','Cuppa with someone who gets you'],['mains','Join an online focus room']] },
-          { id: 'cycle1', icon: '🌙', name: 'Cycle: period days', color: C.pink, basis: 'General energy-matching ideas. Everyone\'s cycle is different', note: 'Many people have less energy around their period. These are gentle ideas, not rules. If your mood drops badly before your period, it\'s worth talking to your GP. PMDD is a recognised condition and you deserve support. If you ever feel unsafe, tap "Need help now?".', items: [['starters','Hot water bottle or warm drink'],['starters','Lie down for 10 minutes, no guilt'],['mains','Gentle stretch or yoga'],['mains','Comfort film under a blanket'],['sides','Cancel or soften one plan']] },
-          { id: 'cycle2', icon: '🌱', name: 'Cycle: after your period', color: C.green || C.teal, basis: 'General energy-matching ideas. Everyone\'s cycle is different', note: 'Some people feel energy and focus returning. If that\'s you, it can be a good time to start things.', items: [['starters','Write a short plan for the week'],['mains','Start a small project you\'ve been putting off'],['mains','Try something new, e.g. a new recipe or route'],['sides','Do your hardest task with a favourite playlist']] },
-          { id: 'cycle3', icon: '☀️', name: 'Cycle: mid-cycle', color: C.yellow, basis: 'General energy-matching ideas. Everyone\'s cycle is different', note: 'Some people feel more sociable and confident around now. Others don\'t. Use what fits.', items: [['mains','Meet a friend or make a call'],['mains','Dance to two or three songs'],['mains','Book something you\'ve been avoiding'],['desserts','A treat out, with a time limit']] },
-          { id: 'cycle4', icon: '🍂', name: 'Cycle: the week before your period', color: C.purple, basis: 'General energy-matching ideas. Everyone\'s cycle is different', note: 'Many people find sensory overload, irritability or low mood harder in the days before their period. These ideas aim to lower demands. If this week is very hard for you, or you feel unsafe, tap "Need help now?" and consider speaking to your GP about PMDD.', items: [['starters','Reduce noise: headphones or a quiet room'],['starters','Eat something with protein, and drink some water'],['mains','Do one thing, not five'],['mains','Write down what\'s swirling in your head'],['sides','Wear soft clothes and keep the lights low'],['desserts','Early night, with a wind-down routine']] },
+          { cycle: true, id: 'cycle1', icon: '🌙', name: 'Cycle: period days', color: C.pink, basis: 'General energy-matching ideas. Everyone\'s cycle is different', note: 'Many people have less energy around their period. These are gentle ideas, not rules. If your mood drops badly before your period, it\'s worth talking to your GP. PMDD is a recognised condition and you deserve support. If you ever feel unsafe, tap "Need help now?".', items: [['starters','Hot water bottle or warm drink'],['starters','Lie down for 10 minutes, no guilt'],['mains','Gentle stretch or yoga'],['mains','Comfort film under a blanket'],['sides','Cancel or soften one plan']] },
+          { cycle: true, id: 'cycle2', icon: '🌱', name: 'Cycle: after your period', color: C.green || C.teal, basis: 'General energy-matching ideas. Everyone\'s cycle is different', note: 'Some people feel energy and focus returning. If that\'s you, it can be a good time to start things.', items: [['starters','Write a short plan for the week'],['mains','Start a small project you\'ve been putting off'],['mains','Try something new, e.g. a new recipe or route'],['sides','Do your hardest task with a favourite playlist']] },
+          { cycle: true, id: 'cycle3', icon: '☀️', name: 'Cycle: mid-cycle', color: C.yellow, basis: 'General energy-matching ideas. Everyone\'s cycle is different', note: 'Some people feel more sociable and confident around now. Others don\'t. Use what fits.', items: [['mains','Meet a friend or make a call'],['mains','Dance to two or three songs'],['mains','Book something you\'ve been avoiding'],['desserts','A treat out, with a time limit']] },
+          { cycle: true, id: 'cycle4', icon: '🍂', name: 'Cycle: the week before your period', color: C.purple, basis: 'General energy-matching ideas. Everyone\'s cycle is different', note: 'Many people find sensory overload, irritability or low mood harder in the days before their period. These ideas aim to lower demands. If this week is very hard for you, or you feel unsafe, tap "Need help now?" and consider speaking to your GP about PMDD.', items: [['starters','Reduce noise: headphones or a quiet room'],['starters','Eat something with protein, and drink some water'],['mains','Do one thing, not five'],['mains','Write down what\'s swirling in your head'],['sides','Wear soft clothes and keep the lights low'],['desserts','Early night, with a wind-down routine']] },
         ];
         const save = (m) => { setDopamineMenu(m); saveDopamineMenu(m); };
         const addItem = (cat, text) => { const v = (text || '').trim(); if (!v || dopamineMenu[cat].includes(v)) return; save({ ...dopamineMenu, [cat]: [...dopamineMenu[cat], v] }); };
@@ -2418,6 +2420,27 @@ function App() {
           setMenuPick(others[Math.floor(Math.random() * others.length)]);
         };
         const total = CATS.reduce((n, c) => n + dopamineMenu[c.id].length, 0);
+        const packCard = pk => React.createElement('div', { key: pk.id, style: { ...card({ marginBottom: 10, borderColor: pk.color + '44' }) } },
+            React.createElement('button', { onClick: () => setPackOpen(packOpen === pk.id ? null : pk.id), style: { display: 'flex', alignItems: 'center', gap: 10, width: '100%', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' } },
+              React.createElement('span', { style: { fontSize: 22 } }, pk.icon),
+              React.createElement('span', { style: { flex: 1 } },
+                React.createElement('span', { style: { display: 'block', color: pk.color, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15 } }, pk.name),
+                React.createElement('span', { style: { display: 'block', color: C.muted, fontFamily: 'Nunito Sans', fontSize: 11, marginTop: 2 } }, pk.basis)
+              ),
+              React.createElement('span', { style: { color: C.muted, fontSize: 13, transform: packOpen === pk.id ? 'rotate(180deg)' : 'none', display: 'inline-block' } }, '▾')
+            ),
+            packOpen === pk.id && React.createElement('div', { style: { marginTop: 12 } },
+              React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, lineHeight: 1.6, margin: '0 0 10px' } }, pk.note),
+              pk.items.map(([cat, text]) => {
+                const have = dopamineMenu[cat].includes(text);
+                return React.createElement('button', { key: text, disabled: have, onClick: () => addItem(cat, text), style: { display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: have ? pk.color + '18' : 'transparent', border: `1px solid ${pk.color}44`, borderRadius: 10, padding: '8px 10px', marginBottom: 6, cursor: have ? 'default' : 'pointer', textAlign: 'left' } },
+                  React.createElement('span', { style: { flex: 1, color: C.text, fontFamily: 'Nunito Sans', fontSize: 13 } }, text),
+                  React.createElement('span', { style: { color: pk.color, fontFamily: 'Nunito', fontWeight: 700, fontSize: 11 } }, have ? '✓ added' : '+ ' + (CATS.find(c => c.id === cat) || {}).name)
+                );
+              }),
+              React.createElement('button', { onClick: () => { const m = { ...dopamineMenu }; pk.items.forEach(([cat, text]) => { if (!m[cat].includes(text)) m[cat] = [...m[cat], text]; }); save(m); }, style: { ...btn(pk.color, { width: '100%', padding: 10, marginTop: 4 }) } }, 'Add the whole pack')
+            )
+          );
         return React.createElement('div', null,
           React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.6, margin: '0 0 14px' } }, 'A dopamine menu is your own list of things that give your brain a lift, sorted by how much energy they take. Build yours when you feel okay, then use it when you\'re flat or stuck.'),
           // pick for me
@@ -2456,28 +2479,54 @@ function App() {
           // ── STARTER PACKS ──
           React.createElement('h3', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 900, fontSize: 17, margin: '22px 0 4px' } }, '📦 Starter packs'),
           React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, lineHeight: 1.6, margin: '0 0 12px' } }, 'Don\'t want to start from scratch? Open a pack and tap the ideas you like to add them to your menu.'),
-          PACKS.map(pk => React.createElement('div', { key: pk.id, style: { ...card({ marginBottom: 10, borderColor: pk.color + '44' }) } },
-            React.createElement('button', { onClick: () => setPackOpen(packOpen === pk.id ? null : pk.id), style: { display: 'flex', alignItems: 'center', gap: 10, width: '100%', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' } },
-              React.createElement('span', { style: { fontSize: 22 } }, pk.icon),
+          PACKS.filter(pk => !pk.cycle).map(packCard),
+
+          // ── CYCLE-AWARE PACKS (own dropdown) ──
+          React.createElement('div', { style: { ...card({ marginBottom: 10, borderColor: C.pink + '55' }) } },
+            React.createElement('button', { onClick: () => setCycleGroupOpen(!cycleGroupOpen), style: { display: 'flex', alignItems: 'center', gap: 10, width: '100%', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' } },
+              React.createElement('span', { style: { fontSize: 22 } }, '🌙'),
               React.createElement('span', { style: { flex: 1 } },
-                React.createElement('span', { style: { display: 'block', color: pk.color, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15 } }, pk.name),
-                React.createElement('span', { style: { display: 'block', color: C.muted, fontFamily: 'Nunito Sans', fontSize: 11, marginTop: 2 } }, pk.basis)
+                React.createElement('span', { style: { display: 'block', color: C.pink, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15 } }, 'Cycle-aware packs'),
+                React.createElement('span', { style: { display: 'block', color: C.muted, fontFamily: 'Nunito Sans', fontSize: 11, marginTop: 2 } }, 'Optional. Ideas matched to energy through the month, including PMDD-friendly ideas')
               ),
-              React.createElement('span', { style: { color: C.muted, fontSize: 13, transform: packOpen === pk.id ? 'rotate(180deg)' : 'none', display: 'inline-block' } }, '▾')
+              React.createElement('span', { style: { color: C.muted, fontSize: 13, transform: cycleGroupOpen ? 'rotate(180deg)' : 'none', display: 'inline-block' } }, '▾')
             ),
-            packOpen === pk.id && React.createElement('div', { style: { marginTop: 12 } },
-              React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, lineHeight: 1.6, margin: '0 0 10px' } }, pk.note),
-              pk.items.map(([cat, text]) => {
-                const have = dopamineMenu[cat].includes(text);
-                return React.createElement('button', { key: text, disabled: have, onClick: () => addItem(cat, text), style: { display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: have ? pk.color + '18' : 'transparent', border: `1px solid ${pk.color}44`, borderRadius: 10, padding: '8px 10px', marginBottom: 6, cursor: have ? 'default' : 'pointer', textAlign: 'left' } },
-                  React.createElement('span', { style: { flex: 1, color: C.text, fontFamily: 'Nunito Sans', fontSize: 13 } }, text),
-                  React.createElement('span', { style: { color: pk.color, fontFamily: 'Nunito', fontWeight: 700, fontSize: 11 } }, have ? '✓ added' : '+ ' + (CATS.find(c => c.id === cat) || {}).name)
-                );
-              }),
-              React.createElement('button', { onClick: () => { const m = { ...dopamineMenu }; pk.items.forEach(([cat, text]) => { if (!m[cat].includes(text)) m[cat] = [...m[cat], text]; }); save(m); }, style: { ...btn(pk.color, { width: '100%', padding: 10, marginTop: 4 }) } }, 'Add the whole pack')
+            cycleGroupOpen && React.createElement('div', { style: { marginTop: 12 } },
+              React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, lineHeight: 1.6, margin: '0 0 10px' } }, 'Everyone\'s cycle is different, and some people don\'t have one. Use these only if they\'re useful to you. Trusted information about PMDD is in "Learn more" below.'),
+              PACKS.filter(pk => pk.cycle).map(packCard)
             )
-          )),
+          ),
           React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 11, lineHeight: 1.6, margin: '4px 0 18px' } }, 'These are general wellbeing ideas, not medical advice. Everyone is different, so keep what helps and ignore the rest.'),
+
+          // ── LEARN MORE (trusted links) ──
+          React.createElement('div', { style: { ...card({ marginBottom: 12, borderColor: C.blue + '44' }) } },
+            React.createElement('button', { onClick: () => setLearnOpen(!learnOpen), style: { display: 'flex', alignItems: 'center', gap: 10, width: '100%', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' } },
+              React.createElement('span', { style: { fontSize: 22 } }, '📚'),
+              React.createElement('span', { style: { flex: 1, color: C.blue, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15 } }, 'Learn more: PMDD, ADHD and hormones'),
+              React.createElement('span', { style: { color: C.muted, fontSize: 13, transform: learnOpen ? 'rotate(180deg)' : 'none', display: 'inline-block' } }, '▾')
+            ),
+            learnOpen && React.createElement('div', { style: { marginTop: 12 } },
+              [
+                ['PMDD and your cycle', [
+                  ['NHS: PMDD (premenstrual dysphoric disorder)', 'Symptoms and when to see a GP', 'https://www.nhs.uk/conditions/pmdd-premenstrual-dysphoric-disorder/'],
+                  ['Mind: PMDD', 'Information, self-care and support', 'https://www.mind.org.uk/information-support/types-of-mental-health-problems/premenstrual-dysphoric-disorder-pmdd/'],
+                  ['IAPMD', 'International charity with peer support and resources', 'https://iapmd.org/'],
+                ]],
+                ['ADHD and hormones', [
+                  ['ADHD Foundation: Women and ADHD', 'Why ADHD is often missed in women', 'https://adhdfoundation.org.uk/guest-articles/women-and-adhd/'],
+                  ['ADHD Foundation: ADHD and the perimenopause (PDF)', 'How hormonal change can affect ADHD symptoms', 'https://www.adhdfoundation.org.uk/assets/resources/adhd-and-the-perimenopause.pdf'],
+                  ['NHS: ADHD in adults', 'Symptoms, diagnosis and treatment', 'https://www.nhs.uk/conditions/adhd-adults/'],
+                ]],
+              ].map(([heading, links]) => React.createElement('div', { key: heading, style: { marginBottom: 10 } },
+                React.createElement('p', { style: { color: C.blue, fontFamily: 'Nunito', fontWeight: 800, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 6px' } }, heading),
+                links.map(([label, desc, url]) => React.createElement('a', { key: url, href: url, target: '_blank', rel: 'noopener noreferrer', style: { display: 'block', textDecoration: 'none', border: `1px solid ${C.blue}44`, borderRadius: 10, padding: '9px 12px', marginBottom: 6 } },
+                  React.createElement('span', { style: { display: 'block', color: C.text, fontFamily: 'Nunito', fontWeight: 700, fontSize: 13 } }, label + ' ↗'),
+                  React.createElement('span', { style: { display: 'block', color: C.muted, fontFamily: 'Nunito Sans', fontSize: 11, marginTop: 2 } }, desc)
+                ))
+              )),
+              React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 11, lineHeight: 1.6, margin: '4px 0 0' } }, 'Links checked in November 2026. They open in your browser. If you think you may have PMDD or ADHD, a GP can help. If you ever feel unsafe, tap "Need help now?".')
+            )
+          ),
 
           // ── MENU PLUS TEASER ──
           React.createElement('div', { style: { ...card({ marginBottom: 12, borderColor: C.purple + '66', background: gt(C.purple + '18', C.pink + '0c', 135) }) } },
