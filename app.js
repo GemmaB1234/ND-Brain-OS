@@ -4213,6 +4213,11 @@ Thank you for your support.
             React.createElement('a', { href: 'tel:999', style: { ...btn(C.pink, { display: 'block', textAlign: 'center', textDecoration: 'none', padding: 12 }) } }, 'Call 999')
           ),
           React.createElement('div', { style: { ...card({ marginBottom: 10 }) } },
+            React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 4px' } }, 'Urgent mental health help (England)'),
+            React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, lineHeight: 1.5, margin: '0 0 8px' } }, 'Call NHS 111, then press option 2 for the mental health support line. Free, 24 hours.'),
+            React.createElement('a', { href: 'tel:111', style: { ...btn(C.purple, { display: 'block', textAlign: 'center', textDecoration: 'none', padding: 12 }) } }, 'Call 111, then press 2')
+          ),
+          React.createElement('div', { style: { ...card({ marginBottom: 10 }) } },
             React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 4px' } }, 'Samaritans, free, any time'),
             React.createElement('a', { href: 'tel:116123', style: { ...btn(C.teal, { display: 'block', textAlign: 'center', textDecoration: 'none', padding: 12 }) } }, 'Call 116 123')
           ),
@@ -4220,7 +4225,7 @@ Thank you for your support.
             React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 4px' } }, 'Prefer to text? Shout, free, 24/7'),
             React.createElement('a', { href: 'sms:85258?body=SHOUT', style: { ...btn(C.blue, { display: 'block', textAlign: 'center', textDecoration: 'none', padding: 12 }) } }, 'Text SHOUT to 85258')
           ),
-          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, lineHeight: 1.6, margin: '4px 0 18px' } }, 'In England you can also call NHS 111 and choose the mental health option.'),
+          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, lineHeight: 1.6, margin: '4px 0 18px' } }, 'Outside England, call 111 or ask for your local crisis service. If you are in immediate danger, always call 999.'),
           React.createElement('button', { onClick: () => setHelpNowOpen(false), style: { ...btn(C.muted, { width: '100%', padding: 14, fontSize: 15 }) } }, 'I\'m okay for now')
         )
       ),
