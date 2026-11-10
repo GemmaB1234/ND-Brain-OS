@@ -699,6 +699,10 @@ function App() {
   const NAV_MAP = { checkin: 'home', helpme: 'tools', mystuff: 'tools', people: 'tools', more: 'mysteady' };
   const setBottomNav = (v) => setBottomNavRaw(NAV_MAP[v] || v);
   const [helpNowOpen, setHelpNowOpen] = useState(false);
+  const [fbKind, setFbKind] = useState('idea');
+  const [fbText, setFbText] = useState('');
+  const [fbReply, setFbReply] = useState(false);
+  const [fbStatus, setFbStatus] = useState('idle'); // idle | sending | sent | error
   const [points, setPoints] = useState(0);
   const [toast, setToast] = useState(null);
   const [toastMsgIdx, setToastMsgIdx] = useState(0);
@@ -939,6 +943,18 @@ function App() {
         await sbRest('POST', 'dopamine_menus', { user_id: user.id, menu }, authToken);
       }
     } catch(e) { console.log('Menu save error', e); }
+  }
+
+  async function sendFeedback() {
+    const message = fbText.trim();
+    if (!message || fbStatus === 'sending') return;
+    setFbStatus('sending');
+    try {
+      const row = { user_id: user ? user.id : null, kind: fbKind, message, reply_ok: !!fbReply, reply_email: fbReply && user ? user.email : null };
+      const res = await sbRest('POST', 'feedback', row, authToken);
+      if (Array.isArray(res) && res[0]) { setFbStatus('sent'); setFbText(''); setFbReply(false); }
+      else setFbStatus('error');
+    } catch(e) { setFbStatus('error'); }
   }
 
   async function saveWorkPassport() {
@@ -3064,8 +3080,25 @@ function App() {
       // Feedback
       React.createElement('div', { style: { ...card({ marginBottom: 16 }) } },
         React.createElement('p', { style: { color: C.purple, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 8px' } }, '💬 Feedback'),
-        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 12px' } }, 'Steady is in beta. We\'d love to hear what you think.'),
-        React.createElement('a', { href: 'mailto:hello@wiredandwell.co.uk', style: { ...btn(C.purple, { width: '100%', display: 'block', textAlign: 'center', textDecoration: 'none' }) } }, 'Send feedback →')
+        fbStatus === 'sent'
+          ? React.createElement('div', null,
+              React.createElement('p', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 6px' } }, '💙 Thank you. We read every message.'),
+              React.createElement('button', { onClick: () => setFbStatus('idle'), style: { ...btn(C.purple, { width: '100%' }) } }, 'Send another')
+            )
+          : React.createElement('div', null,
+              React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 12px', lineHeight: 1.5 } }, 'Steady is in beta. Tell us what would make it better, or what\'s not working.'),
+              React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 10 } },
+                [['idea', '💡 An idea'], ['problem', '🐛 Something\'s wrong'], ['helped', '💙 Something helped'], ['other', '💬 Other']].map(([id, label]) => React.createElement('button', { key: id, onClick: () => setFbKind(id), style: { ...pill(fbKind === id, C.purple), fontSize: 12 } }, label))
+              ),
+              React.createElement('textarea', { value: fbText, onChange: e => setFbText(e.target.value), placeholder: 'Write as much or as little as you like…', maxLength: 2000, style: { ...textareaStyle({ width: '100%', height: 110, marginBottom: 10 }) } }),
+              user && React.createElement('label', { style: { display: 'flex', alignItems: 'flex-start', gap: 8, marginBottom: 10, cursor: 'pointer' } },
+                React.createElement('input', { type: 'checkbox', checked: fbReply, onChange: e => setFbReply(e.target.checked), style: { marginTop: 3 } }),
+                React.createElement('span', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, lineHeight: 1.5 } }, 'You can reply to me by email (we\'ll use the email on your account)')
+              ),
+              React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 11, lineHeight: 1.5, margin: '0 0 10px' } }, 'Please don\'t include anything you\'d rather keep private. We don\'t read this in real time. If you need help right now, close this and tap "Need help now?".'),
+              fbStatus === 'error' && React.createElement('p', { style: { color: C.pink, fontFamily: 'Nunito Sans', fontSize: 12, lineHeight: 1.5, margin: '0 0 10px' } }, 'Sorry, that didn\'t send. You can try again, or ', React.createElement('a', { href: 'mailto:hello@wiredandwell.co.uk?subject=Steady feedback&body=' + encodeURIComponent(fbText), style: { color: C.pink } }, 'email it to us instead'), '.'),
+              React.createElement('button', { onClick: sendFeedback, disabled: !fbText.trim() || fbStatus === 'sending', style: { ...btn(C.purple, { width: '100%', opacity: (!fbText.trim() || fbStatus === 'sending') ? 0.5 : 1 }) } }, fbStatus === 'sending' ? 'Sending…' : 'Send feedback →')
+            )
       ),
 
       // Sign out
