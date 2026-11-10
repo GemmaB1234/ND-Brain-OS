@@ -1322,7 +1322,7 @@ function App() {
       label: "💬 Communication", color: C.pink,
       tabs: [
         { id: "rsd", icon: "🛡️", name: plainLanguage ? "Everyone hates me" : "RSD", desc: plainLanguage ? "When you're convinced someone is angry with you or hates you" : "Spiralling about how someone responded? Start here" },
-        { id: "translate", icon: "💬", name: plainLanguage ? "Help me understand" : "Translate", desc: plainLanguage ? "Work out what someone meant, or say something clearly" : "Decode what they meant, or phrase things for a NT audience" },
+        { id: "translate", icon: "💬", name: plainLanguage ? "Help me understand" : "Translate", desc: plainLanguage ? "Work out what someone meant, or say something clearly" : "Work out what someone meant, or word things so others understand" },
         { id: "decode", icon: "🔍", name: plainLanguage ? "What did that mean?" : "Decode", desc: plainLanguage ? "Make sense of something confusing that just happened" : "Make sense of a specific situation or interaction" },
         { id: "pda", icon: "🌊", name: plainLanguage ? "Why I avoid things" : "PDA", desc: plainLanguage ? "When you can't make yourself do things even when you want to" : "Understand demand avoidance and work with it" },
       ]
@@ -1435,7 +1435,7 @@ function App() {
       {
         icon: "💬", title: "Communication",
         sub: "When people are hard to read — or you're hard to understand",
-        body: "Decode what someone actually meant. Translate your thoughts for a neurotypical audience. Get a reality check when your brain is telling you someone hates you. Understand your PDA profile.",
+        body: "Decode what someone actually meant. Put your thoughts into words other people will understand. Get a reality check when your brain is telling you someone hates you. Understand your PDA profile.",
       },
       {
         icon: "🧠", title: "My Brain",
@@ -1743,22 +1743,26 @@ function App() {
   }
 
   function renderTranslate() {
-    const modes = [{ id: "nt2nd", label: "NT → ND" }, { id: "nd2nt", label: "ND → NT" }, { id: "rules", label: "Unwritten Rules" }];
+    const modes = [{ id: "nt2nd", label: "💬 What did they mean?" }, { id: "nd2nt", label: "✍️ Help me say it" }, { id: "rules", label: "📜 Unwritten rules" }];
     const examples = {
       nt2nd: ["Let me know if you have any questions", "We should catch up sometime", "That's an interesting idea", "It's fine"],
       nd2nt: ["I need 3 days to do this properly", "I don't understand why we do it this way", "Can we just be direct?", "I finished early"],
       rules: ["Why do people say fine when they don't mean it?", "When to reply to emails", "Why eye contact matters", "Reading the room"],
     };
     return React.createElement('div', null,
-      React.createElement(AIComingBanner, { desc: "This tab uses AI to decode neurotypical communication, translate your words for an NT audience, and explain unwritten social rules — with real nuance and context." }),
+      React.createElement(AIComingBanner, { desc: "This tab will use AI to help with everyday conversations. It can explain what someone probably meant, help you word something so it lands the way you intend, and explain the unwritten social rules most people never say out loud." }),
       React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto' } },
         modes.map(m => React.createElement('button', { key: m.id, onClick: () => setTranslateMode(m.id), style: pill(translateMode === m.id, C.pink) }, m.label))
+      ),
+      React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, lineHeight: 1.6, margin: '0 0 14px' } },
+        { nt2nd: 'Paste something someone said or wrote, and get a plain explanation of what they probably meant.', nd2nt: 'Type what you want to say in your own words, and get a version that other people are more likely to understand the way you mean it.', rules: 'Ask about any social rule that doesn\'t make sense, like why people say "fine" when they\'re not.' }[translateMode],
+        React.createElement('span', { style: { display: 'block', marginTop: 4, fontSize: 11 } }, 'ND = neurodivergent (brains like yours). NT = neurotypical (most other people).')
       ),
       React.createElement('div', { style: { display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 12 } },
         examples[translateMode].map(e => React.createElement('button', { key: e, onClick: () => setTranslateInput(e), style: { background: C.pink + '11', border: `1px solid ${C.pink}33`, borderRadius: 20, padding: '4px 10px', color: C.muted, fontSize: 12, cursor: 'pointer', fontFamily: 'Nunito' } }, e))
       ),
       React.createElement('textarea', { value: translateInput, onChange: e => setTranslateInput(e.target.value), placeholder: "Type or select example above...", style: { ...textareaStyle({ height: 80, marginBottom: 10 }) }, onKeyDown: e => { if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleTranslate(); } }),
-      React.createElement('button', { onClick: handleTranslate, disabled: translateLoading || !translateInput.trim(), style: { ...btn(C.pink, { width: '100%', padding: 12, opacity: translateLoading ? 0.7 : 1 }) } }, translateLoading ? '🤔 Translating...' : '💬 Translate'),
+      React.createElement('button', { onClick: handleTranslate, disabled: translateLoading || !translateInput.trim(), style: { ...btn(C.pink, { width: '100%', padding: 12, opacity: translateLoading ? 0.7 : 1 }) } }, translateLoading ? '🤔 Working on it...' : '💬 Help me with this'),
       translateResult && React.createElement('div', { style: { marginTop: 16 } },
         Object.entries(translateResult).map(([k, v]) => React.createElement(AIBlock, { key: k, label: k.replace(/_/g, ' '), value: v, color: C.pink }))
       ),
