@@ -2,21 +2,22 @@ const { useState, useEffect, useRef, useCallback } = React;
 
 
 
-// ─── SUPABASE CLIENT ──────────────────────────────────────────────────────────
+// ─── SUPABASE CLIENT (SDK) ───────────────────────────────────────────────────
 
 const SUPABASE_URL = 'https://ahhgssocxiemxotqcqzz.supabase.co';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFoaGdzc29jeGllbXhvdHFjcXp6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODEzMjk2MjEsImV4cCI6MjA5NjkwNTYyMX0.r9BUPR7mBHs9cg4lN2sqLKVau6F4F4tLMr3_iW64UlM';
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+const SUPABASE_KEY = SUPABASE_ANON_KEY; // older code below still refers to this name
+const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, storageKey: 'steady_session' }
 });
 
-
+// REST helper for table data (named sbRest so it never shadows the SDK global)
 async function sbRest(method, path, body, token) {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
     method,
     headers: {
       'apikey': SUPABASE_ANON_KEY,
-      'Authorization': `Bearer ${token}`,
+      'Authorization': `Bearer ${token || SUPABASE_ANON_KEY}`,
       'Content-Type': 'application/json',
       'Prefer': method === 'POST' ? 'return=representation' : 'return=minimal',
     },
@@ -28,8 +29,6 @@ async function sbRest(method, path, body, token) {
   }
   try { return await res.json(); } catch { return null; }
 }
-
-
 
 // Steady — Wired & Well Ltd
 // Complete single-file React app
@@ -687,13 +686,19 @@ function App() {
   const [themePanelOpen, setThemePanelOpen] = useState(false);
   const [plainLanguage, setPlainLanguage] = useState(false);
   const [needsWizard, setNeedsWizard] = useState(false);
+  const [appNickname, setAppNickname] = useState('');
+  const [nicknamePrompt, setNicknamePrompt] = useState(false);
   const [wizardStep, setWizardStep] = useState(0);
   const [wizardAnswer, setWizardAnswer] = useState(null);
   const [screen, setScreen] = useState("welcome"); // welcome | home | section
   const [welcomeSlide, setWelcomeSlide] = useState(0);
   const [section, setSection] = useState(null);
   const [activeTab, setActiveTab] = useState(null);
-  const [bottomNav, setBottomNav] = useState('checkin'); // checkin | helpme | mystuff | people | more
+  const [bottomNav, setBottomNavRaw] = useState('home'); // home | tools | mysteady
+  // Old ids still used by some buttons are mapped onto the new three tabs
+  const NAV_MAP = { checkin: 'home', helpme: 'tools', mystuff: 'tools', people: 'tools', more: 'mysteady' };
+  const setBottomNav = (v) => setBottomNavRaw(NAV_MAP[v] || v);
+  const [helpNowOpen, setHelpNowOpen] = useState(false);
   const [points, setPoints] = useState(0);
   const [toast, setToast] = useState(null);
   const [toastMsgIdx, setToastMsgIdx] = useState(0);
@@ -781,7 +786,20 @@ function App() {
 
   // Toolkit state
   const [openTool, setOpenTool] = useState(null);
-  const [pinnedTools, setPinnedTools] = useState([]); // [{section, tab, icon, label, color}]
+  const [namesExpanded, setNamesExpanded] = useState(null);
+  const [pinnedTools, setPinnedTools] = useState([]);
+  const [workView, setWorkView] = useState('home'); // home | rights | adjustments | passport | strategies | coaching
+  const [workPassport, setWorkPassport] = useState({
+    name: '', role: '', employer: '', diagnosisPublic: '',
+    strengths1: '', strengths2: '', strengths3: '',
+    challenges1: '', challenges2: '', challenges3: '',
+    adjustment1: '', adjustment2: '', adjustment3: '', adjustment4: '', adjustment5: '',
+    communication: '', meetings: '', environment: '', deadlines: '', support: '',
+    emergencyContact: '', emergencyHow: '',
+    additionalNotes: '',
+  });
+  const [passportSaved, setPassportSaved] = useState(false);
+  const [workExpanded, setWorkExpanded] = useState(null); // [{section, tab, icon, label, color}]
   const [lastUsed, setLastUsed] = useState(null); // {section, tab, icon, label, color}
   const [showAllSections, setShowAllSections] = useState(false);
   const [bodyDoubleTime, setBodyDoubleTime] = useState(25);
@@ -827,8 +845,12 @@ function App() {
 
   // ── localStorage persistence ───────────────────────────────────────────────
 
-  // Load saved session on mount
+  // Load saved session on mount (the Supabase SDK keeps the session)
   useEffect(() => {
+    try {
+      const nick = localStorage.getItem('ndbrainos_nickname');
+      if (nick) setAppNickname(nick);
+    } catch(e) {}
     sb.auth.getSession().then(({ data: { session } }) => {
       if (session) {
         setUser(session.user);
@@ -844,55 +866,100 @@ function App() {
     });
     return () => subscription.unsubscribe();
   }, []);
-     
 
-  async function loadUserData(token, user0bj) {
+  // Save nickname whenever it changes
+  useEffect(() => {
+    localStorage.setItem('ndbrainos_nickname', appNickname);
+    if (user && authToken) saveUserSettings(appNickname);
+  }, [appNickname]);
+
+  async function loadUserData(token, userObj) {
     try {
-      const profile = await sbRest('GET', `profiles?id=eq.${user?.id || ''}&select=*`, null, token);
+      const uid = userObj?.id || user?.id || '';
+      const profile = await sbRest('GET', `profiles?id=eq.${uid}&select=*`, null, token);
       if (profile && profile[0]) {
         if (profile[0].theme_id) setThemeId(profile[0].theme_id);
         if (profile[0].plain_language !== undefined) setPlainLanguage(profile[0].plain_language);
         if (profile[0].points) setPoints(profile[0].points);
         if (profile[0].screen && profile[0].screen !== 'welcome') setScreen(profile[0].screen);
       }
-      const taskData = await sbRest('GET', `tasks?user_id=eq.${user?.id || ''}&order=created_at`, null, token);
+      const taskData = await sbRest('GET', `tasks?user_id=eq.${uid}&order=created_at`, null, token);
       if (taskData && taskData.length) setTasks(taskData.map(t => ({ id: t.id, text: t.text, tier: t.tier, done: t.done, steps: t.steps })));
-      const habitData = await sbRest('GET', `habits?user_id=eq.${user?.id || ''}&order=created_at`, null, token);
+      const habitData = await sbRest('GET', `habits?user_id=eq.${uid}&order=created_at`, null, token);
       if (habitData && habitData.length) setHabits(habitData.map(h => ({ id: h.id, emoji: h.emoji, text: h.text, done: h.done, lastDone: h.last_done })));
-      const moodData = await sbRest('GET', `mood_history?user_id=eq.${user?.id || ''}&order=created_at.desc&limit=30`, null, token);
+      const moodData = await sbRest('GET', `mood_history?user_id=eq.${uid}&order=created_at.desc&limit=30`, null, token);
       if (moodData && moodData.length) setMoodHistory(moodData.map(m => ({ mood: m.mood, note: m.note, date: m.created_at })));
-      const spData = await sbRest('GET', `safety_plans?user_id=eq.${user?.id || ''}&select=*`, null, token);
+      const spData = await sbRest('GET', `safety_plans?user_id=eq.${uid}&select=*`, null, token);
       if (spData && spData[0]) { setSafetyPlan(spData[0].plan); setSafetyPlanSaved(spData[0].saved); setSafetyPlanEditing(!spData[0].saved); }
+      const wpData = await sbRest('GET', `workplace_passports?user_id=eq.${uid}&select=*`, null, token);
+      if (wpData && wpData[0]) { setWorkPassport(wpData[0].passport); setPassportSaved(wpData[0].saved); }
+      const settingsData = await sbRest('GET', `user_settings?user_id=eq.${uid}&select=*`, null, token);
+      if (settingsData && settingsData[0]) {
+        if (settingsData[0].app_nickname) setAppNickname(settingsData[0].app_nickname);
+      }
     } catch(e) { console.log('Load error', e); }
+  }
+
+  async function saveUserSettings(nickname) {
+    if (!user || !authToken) return;
+    try {
+      const existing = await sbRest('GET', `user_settings?user_id=eq.${user.id}&select=id`, null, authToken);
+      const data = { app_nickname: nickname !== undefined ? nickname : appNickname, updated_at: new Date().toISOString() };
+      if (existing && existing[0]) {
+        await sbRest('PATCH', `user_settings?user_id=eq.${user.id}`, data, authToken);
+      } else {
+        await sbRest('POST', 'user_settings', { user_id: user.id, ...data }, authToken);
+      }
+    } catch(e) { console.log('Settings save error', e); }
+  }
+
+  async function saveWorkPassport() {
+    if (!user || !authToken) return;
+    try {
+      const existing = await sbRest('GET', `workplace_passports?user_id=eq.${user.id}&select=id`, null, authToken);
+      if (existing && existing[0]) {
+        await sbRest('PATCH', `workplace_passports?user_id=eq.${user.id}`, { passport: workPassport, saved: true, updated_at: new Date().toISOString() }, authToken);
+      } else {
+        await sbRest('POST', 'workplace_passports', { user_id: user.id, passport: workPassport, saved: true }, authToken);
+      }
+    } catch(e) { console.log('Passport save error', e); }
   }
 
   async function handleSignUp() {
     setAuthLoading(true); setAuthError(null);
-    const { data, error } = await sb.auth.signUp({ email: authEmail, password: authPassword });
-    if (error) { setAuthError(error.message); setAuthLoading(false); return; }
-    if (data.session) {
-      setUser(data.user); setAuthToken(data.session.access_token); setScreen('welcome');
-    } else {
-      setAuthError('Check your email to confirm your account, then log in.');
+    try {
+      const { data, error } = await sb.auth.signUp({ email: authEmail, password: authPassword });
+      if (error) { setAuthError(error.message || 'Sign up failed — please try again'); setAuthLoading(false); return; }
+      if (data.session) {
+        setUser(data.user); setAuthToken(data.session.access_token); setScreen('welcome');
+      } else {
+        setAuthError('Check your email to confirm your account, then log in.');
+      }
+    } catch(e) {
+      setAuthError('Could not connect — please check your internet connection');
     }
     setAuthLoading(false);
   }
-   
 
   async function handleLogin() {
     setAuthLoading(true); setAuthError(null);
-    const { data, error } = await sb.auth.signInWithPassword({ email: authEmail, password: authPassword });
-    if (error) { setAuthError(error.message); setAuthLoading(false); return; }
-    setUser(data.user);
-    setAuthToken(data.session.access_token);
-    try { await loadUserData(data.session.access_token, data.user); } catch(e) { console.log('Load data error', e); }
-    setScreen('home');
+    try {
+      const { data, error } = await sb.auth.signInWithPassword({ email: authEmail, password: authPassword });
+      if (error) { setAuthError(error.message || 'Login failed — please try again'); setAuthLoading(false); return; }
+      setUser(data.user);
+      setAuthToken(data.session.access_token);
+      try { await loadUserData(data.session.access_token, data.user); } catch(e) { console.log('Load data error', e); }
+      setScreen('home');
+    } catch(e) {
+      setAuthError('Could not connect — please check your internet connection');
+    }
     setAuthLoading(false);
   }
-      
+
   async function handleSignOut() {
-    await sb.auth.signOut();
+    try { await sb.auth.signOut(); } catch(e) {}
     setUser(null); setAuthToken(null); setScreen('welcome');
+    try { localStorage.removeItem('ndbrainos_session'); } catch(e) {}
   }
 
   // Auto-save to Supabase when key data changes
@@ -1228,6 +1295,18 @@ function App() {
       label: "🛟 Safety Plan", color: C.purple,
       tabs: [
         { id: "safetyplan", icon: "🛟", name: plainLanguage ? "My crisis plan" : "My Safety Plan", desc: plainLanguage ? "Your plan for when everything gets too much" : "Your personal plan for meltdown and overwhelm — written by you, for you" },
+      ]
+    },
+    names: {
+      label: "✨ Finally Have Names", color: C.pink,
+      tabs: [
+        { id: "names", icon: "✨", name: "Finally Have Names", desc: "20 ND experiences that finally have words" },
+      ]
+    },
+    work: {
+      label: "💼 At Work", color: C.blue,
+      tabs: [
+        { id: "work", icon: "💼", name: "At Work", desc: "Reasonable adjustments, rights, passport and workplace support" },
       ]
     },
   };
@@ -2240,7 +2319,7 @@ function App() {
   function renderDopamine() {
     const tabs = [
       { id: "science", label: "🧬 Science" }, { id: "fixes", label: "💚 Good fixes" },
-      { id: "traps", label: "🚨 Traps" }, { id: "games", label: "🎮 Distraction" }
+      { id: "traps", label: "🚨 Traps" } // Games tab switched off for now (code kept below, restore by adding { id: "games", label: "🎮 Distraction" })
     ];
     return React.createElement('div', null,
       React.createElement('div', { style: { display: 'flex', gap: 8, marginBottom: 16, overflowX: 'auto' } },
@@ -2876,7 +2955,7 @@ function App() {
         React.createElement('button', {
           onClick: async () => {
             if (!changePwNew || changePwNew.length < 6) { setChangePwMsg({ ok: false, text: 'Password must be at least 6 characters' }); return; }
-            const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, { method: 'PUT', headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ password: changePwNew }) });
+            const res = await fetch(`${SUPABASE_URL}/auth/v1/user`, { method: 'PUT', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${authToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ password: changePwNew }) });
             if (res.ok) { setChangePwMsg({ ok: true, text: 'Password updated ✓' }); setChangePwNew(""); }
             else { setChangePwMsg({ ok: false, text: 'Could not update password — please try again' }); }
           },
@@ -2911,7 +2990,7 @@ function App() {
               React.createElement('button', { onClick: () => setDeleteConfirm(false), style: { ...btn(C.muted, { flex: 1 }) } }, 'Cancel'),
               React.createElement('button', {
                 onClick: async () => {
-                  await fetch(`${SUPABASE_URL}/auth/v1/user`, { method: 'DELETE', headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${authToken}` } });
+                  await fetch(`${SUPABASE_URL}/auth/v1/user`, { method: 'DELETE', headers: { 'apikey': SUPABASE_KEY, 'Authorization': `Bearer ${authToken}` } });
                   handleSignOut();
                 },
                 style: { ...btn(C.pink, { flex: 1 }) }
@@ -2950,6 +3029,571 @@ function App() {
     );
   }
 
+  function renderWork() {
+    const wp = workPassport;
+    const setWp = (key, val) => setWorkPassport(p => ({ ...p, [key]: val }));
+
+    const sectionBtn = (id, icon, label, desc, color) => React.createElement('button', {
+      key: id, onClick: () => setWorkView(id),
+      style: { display: 'flex', alignItems: 'center', gap: 14, width: '100%', background: C.card, border: `1.5px solid ${C.border}`, borderRadius: 16, padding: '16px', marginBottom: 10, cursor: 'pointer', textAlign: 'left' }
+    },
+      React.createElement('div', { style: { width: 46, height: 46, borderRadius: 12, background: color + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 } }, icon),
+      React.createElement('div', null,
+        React.createElement('div', { style: { color, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, marginBottom: 3 } }, label),
+        React.createElement('div', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, lineHeight: 1.4 } }, desc)
+      )
+    );
+
+    function backBtn() {
+      return React.createElement('button', { onClick: () => setWorkView('home'), style: { ...btn(C.muted, { marginBottom: 16, fontSize: 12 }) } }, '← Back');
+    }
+
+    function infoCard(icon, title, color, body, items) {
+      return React.createElement('div', { style: { ...card({ marginBottom: 12, borderColor: color + '44' }) } },
+        React.createElement('div', { style: { display: 'flex', gap: 10, alignItems: 'center', marginBottom: 10 } },
+          React.createElement('span', { style: { fontSize: 20 } }, icon),
+          React.createElement('span', { style: { color, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15 } }, title)
+        ),
+        body && React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 13, margin: items ? '0 0 10px' : 0, lineHeight: 1.7 } }, body),
+        items && React.createElement('div', null, items.map((item, i) => React.createElement('div', { key: i, style: { display: 'flex', gap: 10, marginBottom: 6 } },
+          React.createElement('span', { style: { color, flexShrink: 0, marginTop: 2 } }, '◆'),
+          React.createElement('span', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.6 } }, item)
+        )))
+      );
+    }
+
+    function linkCard(label, desc, url, tag, color) {
+      return React.createElement('a', { href: url, target: '_blank', rel: 'noopener noreferrer', style: { display: 'flex', alignItems: 'center', gap: 12, textDecoration: 'none', padding: '11px 12px', marginBottom: 8, background: color + '0d', border: `1px solid ${C.border}`, borderRadius: 12 } },
+        React.createElement('div', { style: { flex: 1 } },
+          React.createElement('div', { style: { color, fontFamily: 'Nunito', fontWeight: 700, fontSize: 14, marginBottom: 2 } }, label),
+          React.createElement('div', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, lineHeight: 1.4 } }, desc)
+        ),
+        React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4, flexShrink: 0 } },
+          React.createElement('span', { style: { background: color + '22', color, fontFamily: 'Nunito', fontWeight: 700, fontSize: 10, borderRadius: 20, padding: '2px 8px' } }, tag),
+          React.createElement('span', { style: { color: C.muted, fontSize: 14 } }, '↗')
+        )
+      );
+    }
+
+    function passportField(key, label, placeholder, multiline) {
+      const style = multiline ? { ...textareaStyle({ marginBottom: 10, height: 64 }) } : { ...input({ marginBottom: 10 }) };
+      return React.createElement('div', { style: { marginBottom: 4 } },
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' } }, label),
+        multiline
+          ? React.createElement('textarea', { value: wp[key], onChange: e => setWp(key, e.target.value), placeholder, style })
+          : React.createElement('input', { value: wp[key], onChange: e => setWp(key, e.target.value), placeholder, style })
+      );
+    }
+
+    // ── HOME ────────────────────────────────────────────────────────────────
+    if (workView === 'home') return React.createElement('div', null,
+      React.createElement('div', { style: { background: gt(C.blue + '18', C.teal + '10', 135), border: `1.5px solid ${C.blue}44`, borderRadius: 16, padding: '16px', marginBottom: 20 } },
+        React.createElement('p', { style: { color: C.blue, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, margin: '0 0 6px' } }, '💼 At Work'),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: 0, lineHeight: 1.6 } }, 'You have rights. You have options. And you don\'t have to navigate this alone. This section covers everything from your legal rights to practical scripts, workplace strategies, and your personal Workplace Passport.')
+      ),
+      sectionBtn('rights', '⚖️', 'Your Rights', 'Equality Act 2010, what employers must do, and what you\'re entitled to', C.blue),
+      sectionBtn('adjustments', '🔧', 'Reasonable Adjustments', 'What they are, what to ask for, and how to ask for them', C.teal),
+      sectionBtn('passport', '📋', 'My Workplace Passport', 'A personal document to share with your employer — fill in once, use anywhere', C.purple),
+      sectionBtn('strategies', '🧠', 'Coping Strategies', 'Practical ways to manage meetings, emails, deadlines and sensory overload at work', C.yellow),
+      sectionBtn('coaching', '🔗', 'Coaching & Support Links', 'Accredited coaches, Access to Work, and trusted workplace resources', C.pink)
+    );
+
+    // ── RIGHTS ──────────────────────────────────────────────────────────────
+    if (workView === 'rights') return React.createElement('div', null,
+      backBtn(),
+      infoCard('⚖️', 'The Equality Act 2010', C.blue,
+        'ADHD, autism, dyslexia, dyspraxia and other neurodivergent conditions are recognised as disabilities under the Equality Act 2010 — if they have a substantial and long-term adverse effect on your ability to carry out normal day-to-day activities. You do not need a formal diagnosis to request adjustments, but having one strengthens your case.'
+      ),
+      infoCard('✓', 'What your employer must do', C.teal, null, [
+        'Make reasonable adjustments to remove disadvantages you face because of your condition',
+        'Not discriminate against you because of your neurodivergence',
+        'Keep your disclosure confidential (unless you consent otherwise)',
+        'Not ask intrusive questions about your condition unless directly relevant',
+        'Consider your requests seriously and respond in writing',
+      ]),
+      infoCard('🚫', 'What they cannot do', C.pink, null, [
+        'Refuse to consider reasonable adjustments without justification',
+        'Dismiss you or treat you unfairly because of your condition',
+        'Share your diagnosis with colleagues without your consent',
+        'Require you to disclose your diagnosis before offering a job',
+        'Ignore occupational health recommendations without reason',
+      ]),
+      infoCard('💡', 'You do not have to disclose', C.yellow,
+        'You are never legally required to tell your employer about a neurodivergent condition. However, if you want adjustments, you will generally need to share enough for them to understand what support you need. You can share your needs without sharing your diagnosis — for example: "I process information better in writing" rather than "I have ADHD."'
+      ),
+      infoCard('📞', 'If things go wrong', C.orange, null, [
+        'Keep a written record of every conversation about adjustments',
+        'If your employer refuses adjustments, ask for the refusal in writing',
+        'Contact ACAS (acas.org.uk) for free, impartial advice',
+        'An Employment Tribunal can rule on reasonable adjustment disputes',
+        'Disability Rights UK and ADHD UK can provide guidance and support',
+      ])
+    );
+
+    // ── ADJUSTMENTS ──────────────────────────────────────────────────────────
+    if (workView === 'adjustments') return React.createElement('div', null,
+      backBtn(),
+      infoCard('🔧', 'What is a reasonable adjustment?', C.teal,
+        'A reasonable adjustment is a change your employer makes to remove a disadvantage you face because of your condition. "Reasonable" means the employer can justify making it — taking into account cost, disruption, and the size of the organisation. Many adjustments cost nothing at all.'
+      ),
+      [
+        { icon: '🏢', title: 'Environment', color: C.blue, items: ['A quieter workspace or dedicated quiet room', 'Permission to use noise-cancelling headphones', 'Reduced hot-desking or a consistent desk location', 'Reduced fluorescent lighting or permission to use a lamp', 'Permission to work from home on high-demand days'] },
+        { icon: '📋', title: 'Tasks & workload', color: C.teal, items: ['Clear written instructions rather than verbal only', 'Breaking large projects into smaller milestones', 'Extra time for written work or reports', 'Prioritisation support from a manager', 'Avoiding multitasking — one task at a time'] },
+        { icon: '📅', title: 'Flexibility', color: C.purple, items: ['Flexible start/end times to avoid peak sensory environments', 'Permission to take movement breaks', 'Adjusted deadlines during high-demand periods', 'Part-time or compressed hours if appropriate', 'Phased return after burnout or absence'] },
+        { icon: '💬', title: 'Communication', color: C.pink, items: ['Meeting agendas sent in advance', 'Minutes or written summaries after meetings', 'Not being put on the spot in group meetings', 'Direct, clear feedback in writing', 'Regular structured 1:1s with a named manager'] },
+        { icon: '🛠️', title: 'Equipment & support', color: C.orange, items: ['Text-to-speech or speech-to-text software', 'Coloured overlays or screen filters', 'Access to Work funding for a job coach or support worker', 'Extra monitor, standing desk, or ergonomic equipment', 'A mentor or buddy who understands neurodivergence'] },
+      ].map((s, i) => React.createElement('div', { key: i, style: { ...card({ marginBottom: 10, borderColor: s.color + '44' }) } },
+        React.createElement('button', { onClick: () => setWorkExpanded(e => e === s.title ? null : s.title), style: { display: 'flex', alignItems: 'center', gap: 10, width: '100%', background: 'transparent', border: 'none', cursor: 'pointer', padding: 0, textAlign: 'left' } },
+          React.createElement('span', { style: { fontSize: 18 } }, s.icon),
+          React.createElement('span', { style: { flex: 1, color: s.color, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15 } }, s.title),
+          React.createElement('span', { style: { color: C.muted, fontSize: 13, transform: workExpanded === s.title ? 'rotate(180deg)' : 'none', display: 'inline-block' } }, '▾')
+        ),
+        workExpanded === s.title && React.createElement('div', { style: { marginTop: 12 } },
+          s.items.map((item, j) => React.createElement('div', { key: j, style: { display: 'flex', gap: 10, marginBottom: 6 } },
+            React.createElement('span', { style: { color: s.color, flexShrink: 0, marginTop: 2 } }, '◆'),
+            React.createElement('span', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.6 } }, item)
+          ))
+        )
+      )),
+      React.createElement('div', { style: { ...card({ marginTop: 8, borderColor: C.teal + '44' }) } },
+        React.createElement('p', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 10px' } }, '✉️ Template: Requesting reasonable adjustments'),
+        React.createElement('div', { style: { background: C.bg, borderRadius: 10, padding: '14px', marginBottom: 12, border: `1px solid ${C.border}` } },
+          React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.8, margin: 0, whiteSpace: 'pre-line' } },
+            `Subject: Request for Reasonable Adjustments
+
+Dear [Manager's name],
+
+I am writing to request some reasonable adjustments to support me in my role.
+
+I have [condition/neurodivergent profile], which affects [brief description of impact at work — e.g. how I process verbal information, manage transitions between tasks, or maintain focus in open-plan environments].
+
+I would like to discuss the following adjustments:
+
+1. [Adjustment 1]
+2. [Adjustment 2]
+3. [Adjustment 3]
+
+I believe these changes would allow me to perform my role effectively and would have minimal impact on the team. I am happy to discuss these further and to provide any supporting information you may need.
+
+I would appreciate a written response confirming next steps.
+
+Thank you for your support.
+
+[Your name]`
+          )
+        ),
+        React.createElement('button', {
+          onClick: () => {
+            const text = `Subject: Request for Reasonable Adjustments\n\nDear [Manager's name],\n\nI am writing to request some reasonable adjustments to support me in my role.\n\nI have [condition], which affects [brief description]. I would like to discuss the following adjustments:\n\n1. [Adjustment 1]\n2. [Adjustment 2]\n3. [Adjustment 3]\n\nI believe these changes would allow me to perform my role effectively. I am happy to discuss further and provide any supporting information.\n\nI would appreciate a written response confirming next steps.\n\nThank you,\n[Your name]`;
+            navigator.clipboard.writeText(text).then(() => alert('Template copied to clipboard!'));
+          },
+          style: { ...btn(C.teal, { width: '100%' }) }
+        }, '📋 Copy template')
+      )
+    );
+
+    // ── PASSPORT ─────────────────────────────────────────────────────────────
+    if (workView === 'passport') {
+      if (passportSaved) return React.createElement('div', null,
+        backBtn(),
+        // Passport card — visual display
+        React.createElement('div', { style: { background: `linear-gradient(135deg, ${C.purple}22, ${C.blue}15)`, border: `2px solid ${C.purple}55`, borderRadius: 20, padding: '24px 20px', marginBottom: 16 } },
+          React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20, paddingBottom: 16, borderBottom: `1px solid ${C.border}` } },
+            React.createElement('div', { style: { fontSize: 36 } }, '📋'),
+            React.createElement('div', null,
+              React.createElement('h2', { style: { color: C.purple, fontFamily: 'Nunito', fontWeight: 900, fontSize: 20, margin: '0 0 2px' } }, 'Workplace Passport'),
+              React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, margin: 0 } }, wp.name + (wp.role ? ' · ' + wp.role : '') + (wp.employer ? ' · ' + wp.employer : ''))
+            )
+          ),
+          wp.diagnosisPublic && React.createElement('div', { style: { marginBottom: 16 } },
+            React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 4px' } }, 'My neurodivergent profile'),
+            React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 14, margin: 0, lineHeight: 1.6 } }, wp.diagnosisPublic)
+          ),
+          [wp.strengths1, wp.strengths2, wp.strengths3].filter(Boolean).length > 0 && React.createElement('div', { style: { marginBottom: 16 } },
+            React.createElement('p', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 8px' } }, '✦ My strengths at work'),
+            [wp.strengths1, wp.strengths2, wp.strengths3].filter(Boolean).map((s, i) =>
+              React.createElement('div', { key: i, style: { display: 'flex', gap: 8, marginBottom: 4 } },
+                React.createElement('span', { style: { color: C.teal } }, '✦'),
+                React.createElement('span', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 13 } }, s)
+              )
+            )
+          ),
+          [wp.challenges1, wp.challenges2, wp.challenges3].filter(Boolean).length > 0 && React.createElement('div', { style: { marginBottom: 16 } },
+            React.createElement('p', { style: { color: C.yellow, fontFamily: 'Nunito', fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 8px' } }, '⚡ What I find challenging'),
+            [wp.challenges1, wp.challenges2, wp.challenges3].filter(Boolean).map((s, i) =>
+              React.createElement('div', { key: i, style: { display: 'flex', gap: 8, marginBottom: 4 } },
+                React.createElement('span', { style: { color: C.yellow } }, '◆'),
+                React.createElement('span', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 13 } }, s)
+              )
+            )
+          ),
+          [wp.adjustment1, wp.adjustment2, wp.adjustment3, wp.adjustment4, wp.adjustment5].filter(Boolean).length > 0 && React.createElement('div', { style: { marginBottom: 16 } },
+            React.createElement('p', { style: { color: C.purple, fontFamily: 'Nunito', fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 8px' } }, '🔧 Adjustments that help me'),
+            [wp.adjustment1, wp.adjustment2, wp.adjustment3, wp.adjustment4, wp.adjustment5].filter(Boolean).map((s, i) =>
+              React.createElement('div', { key: i, style: { display: 'flex', gap: 8, marginBottom: 4 } },
+                React.createElement('span', { style: { color: C.purple } }, '◆'),
+                React.createElement('span', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 13 } }, s)
+              )
+            )
+          ),
+          [
+            { label: 'Communication', val: wp.communication },
+            { label: 'Meetings', val: wp.meetings },
+            { label: 'Environment', val: wp.environment },
+            { label: 'Deadlines', val: wp.deadlines },
+            { label: 'Support', val: wp.support },
+          ].filter(f => f.val).length > 0 && React.createElement('div', { style: { marginBottom: 16 } },
+            React.createElement('p', { style: { color: C.blue, fontFamily: 'Nunito', fontWeight: 700, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 8px' } }, '💬 How to work well with me'),
+            [
+              { label: 'Communication', val: wp.communication },
+              { label: 'Meetings', val: wp.meetings },
+              { label: 'Environment', val: wp.environment },
+              { label: 'Deadlines', val: wp.deadlines },
+              { label: 'Support', val: wp.support },
+            ].filter(f => f.val).map((f, i) =>
+              React.createElement('div', { key: i, style: { marginBottom: 8 } },
+                React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontWeight: 700, fontSize: 11, margin: '0 0 2px' } }, f.label),
+                React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 13, margin: 0, lineHeight: 1.5 } }, f.val)
+              )
+            )
+          ),
+          (wp.emergencyContact || wp.additionalNotes) && React.createElement('div', { style: { paddingTop: 12, borderTop: `1px solid ${C.border}` } },
+            wp.emergencyContact && React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, margin: '0 0 4px' } }, '📞 Emergency contact: ' + wp.emergencyContact + (wp.emergencyHow ? ' (' + wp.emergencyHow + ')' : '')),
+            wp.additionalNotes && React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, margin: 0, lineHeight: 1.5, fontStyle: 'italic' } }, wp.additionalNotes)
+          )
+        ),
+        React.createElement('div', { style: { display: 'flex', gap: 8 } },
+          React.createElement('button', {
+            onClick: () => setPassportSaved(false),
+            style: { ...btn(C.muted, { flex: 1 }) }
+          }, '✏️ Edit'),
+          React.createElement('button', {
+            onClick: () => {
+              const lines = [
+                'WORKPLACE PASSPORT', '═'.repeat(40), '',
+                `Name: ${wp.name}`, `Role: ${wp.role}`, `Employer: ${wp.employer}`, '',
+                wp.diagnosisPublic ? `My profile: ${wp.diagnosisPublic}\n` : '',
+                'MY STRENGTHS',
+                ...[wp.strengths1, wp.strengths2, wp.strengths3].filter(Boolean).map(s => `• ${s}`), '',
+                'WHAT I FIND CHALLENGING',
+                ...[wp.challenges1, wp.challenges2, wp.challenges3].filter(Boolean).map(s => `• ${s}`), '',
+                'ADJUSTMENTS THAT HELP ME',
+                ...[wp.adjustment1, wp.adjustment2, wp.adjustment3, wp.adjustment4, wp.adjustment5].filter(Boolean).map(s => `• ${s}`), '',
+                'HOW TO WORK WELL WITH ME',
+                wp.communication ? `Communication: ${wp.communication}` : '',
+                wp.meetings ? `Meetings: ${wp.meetings}` : '',
+                wp.environment ? `Environment: ${wp.environment}` : '',
+                wp.deadlines ? `Deadlines: ${wp.deadlines}` : '',
+                wp.support ? `Support: ${wp.support}` : '', '',
+                wp.emergencyContact ? `Emergency contact: ${wp.emergencyContact} (${wp.emergencyHow})` : '',
+                wp.additionalNotes ? `Notes: ${wp.additionalNotes}` : '',
+              ].filter(l => l !== '').join('\n');
+              navigator.clipboard.writeText(lines).then(() => alert('Passport copied to clipboard — paste into a document to save or print.'));
+            },
+            style: { ...btn(C.purple, { flex: 1 }) }
+          }, '📋 Copy to clipboard')
+        )
+      );
+
+      return React.createElement('div', null,
+        backBtn(),
+        React.createElement('div', { style: { background: C.purple + '11', border: `1px solid ${C.purple}33`, borderRadius: 12, padding: '12px 14px', marginBottom: 16 } },
+          React.createElement('p', { style: { color: C.purple, fontFamily: 'Nunito', fontWeight: 700, fontSize: 14, margin: '0 0 4px' } }, '📋 Your Workplace Passport'),
+          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: 0, lineHeight: 1.6 } }, 'Fill this in once and share it with any manager or HR team. It replaces the awkward conversation with a clear, professional document about how to get the best from you.')
+        ),
+        passportField('name', 'Your name', 'Full name'),
+        passportField('role', 'Job title / role', 'e.g. Support Worker, Teacher, Manager'),
+        passportField('employer', 'Employer / organisation', 'Where you work'),
+        passportField('diagnosisPublic', 'My neurodivergent profile (what you\'re comfortable sharing)', 'e.g. I have ADHD and autism. I am late-diagnosed.', true),
+        React.createElement('p', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 14, margin: '16px 0 8px' } }, '✦ My strengths at work'),
+        passportField('strengths1', 'Strength 1', 'e.g. Hyperfocus — I go very deep on problems that interest me'),
+        passportField('strengths2', 'Strength 2', 'e.g. Creative thinking and seeing patterns others miss'),
+        passportField('strengths3', 'Strength 3', 'e.g. High empathy and strong commitment to fairness'),
+        React.createElement('p', { style: { color: C.yellow, fontFamily: 'Nunito', fontWeight: 800, fontSize: 14, margin: '16px 0 8px' } }, '⚡ What I find challenging'),
+        passportField('challenges1', 'Challenge 1', 'e.g. Processing verbal information quickly in meetings'),
+        passportField('challenges2', 'Challenge 2', 'e.g. Transitioning between tasks without warning'),
+        passportField('challenges3', 'Challenge 3', 'e.g. Open-plan noise when I need to concentrate'),
+        React.createElement('p', { style: { color: C.purple, fontFamily: 'Nunito', fontWeight: 800, fontSize: 14, margin: '16px 0 8px' } }, '🔧 Adjustments that help me'),
+        passportField('adjustment1', 'Adjustment 1', 'e.g. Meeting agendas sent 24 hours in advance'),
+        passportField('adjustment2', 'Adjustment 2', 'e.g. Written summaries of verbal instructions'),
+        passportField('adjustment3', 'Adjustment 3', 'e.g. Permission to use noise-cancelling headphones'),
+        passportField('adjustment4', 'Adjustment 4', 'e.g. Flexible start time — I function better after 9:30am'),
+        passportField('adjustment5', 'Adjustment 5', 'e.g. Regular 1:1 check-ins to review priorities'),
+        React.createElement('p', { style: { color: C.blue, fontFamily: 'Nunito', fontWeight: 800, fontSize: 14, margin: '16px 0 8px' } }, '💬 How to work well with me'),
+        passportField('communication', 'Communication', 'e.g. I prefer written communication over verbal. Please don\'t expect instant responses to messages.', true),
+        passportField('meetings', 'Meetings', 'e.g. Please send an agenda. I may need to move or fidget — this helps me concentrate.', true),
+        passportField('environment', 'Environment', 'e.g. I work best in quieter spaces. Fluorescent lighting affects my concentration.', true),
+        passportField('deadlines', 'Deadlines & workload', 'e.g. I work best with clear priorities. If everything is urgent, nothing gets done well.', true),
+        passportField('support', 'When I\'m struggling', 'e.g. If I go quiet or seem withdrawn, a gentle private check-in is more helpful than a public prompt.', true),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontWeight: 800, fontSize: 14, margin: '16px 0 8px' } }, '📞 Emergency / support contact'),
+        passportField('emergencyContact', 'Contact name', 'Who to contact if you need support'),
+        passportField('emergencyHow', 'How to contact them', 'e.g. Text only, or call after 9am'),
+        passportField('additionalNotes', 'Anything else', 'Anything else you\'d like your employer to know', true),
+        React.createElement('button', {
+          onClick: async () => { setPassportSaved(true); await saveWorkPassport(); awardPoints(25, 'Workplace Passport saved. That took courage and self-knowledge. 💜'); },
+          style: { ...btn(C.purple, { width: '100%', padding: 14, fontSize: 15, marginTop: 8 }) }
+        }, '💾 Save my Workplace Passport')
+      );
+    }
+
+    // ── STRATEGIES ────────────────────────────────────────────────────────────
+    if (workView === 'strategies') return React.createElement('div', null,
+      backBtn(),
+      infoCard('📧', 'Managing emails', C.teal, null, [
+        'Set specific email times rather than checking constantly — twice a day is enough for most roles',
+        'Use folders and filters to sort by urgency before you open anything',
+        'The two-minute rule: if a reply takes under two minutes, do it now',
+        'Draft replies immediately after reading — even an incomplete draft is better than none',
+        'Turn off email notifications — they interrupt flow and create anxiety',
+        'Use a "waiting for reply" folder so nothing falls through',
+      ]),
+      infoCard('🗓️', 'Managing meetings', C.blue, null, [
+        'Always ask for an agenda in advance — if there isn\'t one, write your own with the expected topics',
+        'Arrive two minutes early to settle your sensory environment before it fills',
+        'Take notes on paper or a device — writing helps processing and gives you a record',
+        'It\'s okay to say "can I come back to you on that?" rather than answering instantly',
+        'Request that minutes or a summary are sent afterwards',
+        'If you attend by video, having your camera off may reduce sensory load',
+      ]),
+      infoCard('⏰', 'Managing deadlines & time', C.yellow, null, [
+        'Time blindness is real — build in double the time you think you need',
+        'Use external timers rather than relying on internal time sense',
+        'Break every deadline into three: start date, halfway check, completion date',
+        'Tell someone else your deadline — external accountability helps',
+        '"Eat the frog" is sometimes wrong for ND brains — start with something you can do to build momentum',
+        'Body doubling (working alongside someone) can break task paralysis',
+      ]),
+      infoCard('🧠', 'Managing cognitive load', C.purple, null, [
+        'Write everything down — never trust working memory for important information',
+        'One task at a time where possible — multitasking is a myth and costly for ND brains',
+        'Use a physical inbox/outbox system so nothing disappears out of sight',
+        'End each day by writing tomorrow\'s three priorities — future you will thank you',
+        'Transition rituals between tasks help the brain switch context',
+        'Regular movement breaks improve focus — short walks, stretches, standing',
+      ]),
+      infoCard('🌊', 'Managing sensory load at work', C.blue, null, [
+        'Noise-cancelling headphones are a legitimate productivity tool, not antisocial behaviour',
+        'Identify your lowest-stimulation workspace and use it for complex tasks',
+        'Lunch away from your desk — even 10 minutes of quiet resets the system',
+        'Reduce visual clutter on your desk to reduce cognitive load',
+        'Be honest with yourself about your sensory limits — pushing through creates burnout',
+        'A sensory kit at work (ear defenders, sunglasses, fidget, snacks) is not unusual',
+      ]),
+      infoCard('🎭', 'Managing masking and burnout', C.pink, null, [
+        'Masking is exhausting — plan for recovery time after high-demand days',
+        'Identify which parts of your role cost the most energy and protect recovery time',
+        'Small unmasking moments — stimming privately, speaking plainly — preserve capacity',
+        'Burnout is not laziness. It is a neurological state requiring genuine rest to recover from',
+        'If you notice early burnout signs, act early — it is much easier to prevent than recover from',
+        'Talking to a trusted colleague or manager early is often better than waiting until crisis',
+      ])
+    );
+
+    // ── COACHING ──────────────────────────────────────────────────────────────
+    if (workView === 'coaching') return React.createElement('div', null,
+      backBtn(),
+      React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 16px', lineHeight: 1.6 } }, 'Trusted, accredited resources and organisations for neurodivergent people in the workplace.'),
+      React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 8px' } }, '🏛️ Government & legal'),
+      linkCard('Access to Work — Gov.uk', 'Apply for funding for workplace adjustments, coaching, equipment and support workers', 'https://www.gov.uk/access-to-work', 'Gov UK', C.blue),
+      linkCard('ACAS — Neurodiversity at work', 'Free guidance on neurodiversity, reasonable adjustments and employer obligations', 'https://www.acas.org.uk/neurodiversity-at-work', 'Free', C.blue),
+      linkCard('Equality Advisory Support Service', 'Free advice if you think your rights under the Equality Act have been breached', 'https://www.equalityadvisoryservice.com', 'Helpline', C.blue),
+      React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, margin: '16px 0 8px' } }, '🧠 ND workplace organisations'),
+      linkCard('ADHD Foundation — Workplace', 'Workplace training, coaching and support for ADHD employees and employers', 'https://www.adhdfoundation.org.uk/workplace/', 'Charity', C.teal),
+      linkCard('Neurodiversity in Business', 'Employer-facing organisation promoting ND-inclusive workplaces — useful for HR conversations', 'https://www.neurodiversityinbusiness.org', 'Organisation', C.teal),
+      linkCard('ADHD UK — Workplace Resources', 'Practical workplace guides, rights information and lived experience resources', 'https://adhduk.co.uk/workplace/', 'Charity', C.teal),
+      linkCard('Autism at Work — National Autistic Society', 'Guides for autistic employees and their employers', 'https://www.autism.org.uk/advice-and-guidance/topics/employment', 'Charity', C.teal),
+      React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, margin: '16px 0 8px' } }, '🎓 Finding a coach'),
+      linkCard('ADHD Coaches Organisation', 'Directory of accredited ADHD coaches in the UK and internationally', 'https://www.adhdcoaches.org', 'Directory', C.purple),
+      linkCard('ICF — Find a Coach', 'International Coaching Federation — search for neurodiversity-specialist coaches', 'https://www.coachingfederation.org/find-a-coach', 'Directory', C.purple),
+      linkCard('Access to Work coaching', 'Access to Work can fund a job coach — apply via the Gov.uk link above', 'https://www.gov.uk/access-to-work', 'Funded', C.purple),
+      React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontWeight: 700, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, margin: '16px 0 8px' } }, '📖 Further reading'),
+      linkCard('Understood.org — Work & ADHD', 'Practical articles on ADHD in the workplace', 'https://www.understood.org/en/articles/adhd-at-work', 'Website', C.orange),
+      linkCard('Disability Rights UK', 'Comprehensive employment rights information for disabled people', 'https://www.disabilityrightsuk.org/employment', 'Charity', C.orange)
+    );
+
+    return null;
+  }
+
+  function renderFinallyHaveNames() {
+    const NAMES = [
+      {
+        n: 1, name: "Body doubling",
+        tagline: "you can't start alone, but with someone nearby, it happens",
+        explanation: "Your brain needs the presence of another person to feel safe enough to start. It's not laziness — it's a nervous system that regulates through co-regulation. Working alongside someone (even silently, even on a call) can unlock what feels impossible alone.",
+        tool: { label: "Try the Body Double timer", section: "regulate", tab: "toolkit", openTool: "bodydouble", nav: "helpme" }
+      },
+      {
+        n: 2, name: "Time blindness",
+        tagline: "there's no 'later.' only now, or not yet",
+        explanation: "ADHD brains often experience time as two states: NOW and NOT NOW. The future doesn't feel real until it's urgent. This isn't poor planning — it's a neurological difference in how time is perceived and felt. Timers, alarms, and visual clocks help make time feel real.",
+        tool: { label: "Go to Tasks", section: "mybrain", tab: "tasks", nav: "mystuff" }
+      },
+      {
+        n: 3, name: "Rejection sensitivity",
+        tagline: "one short reply and the whole day is over",
+        explanation: "Also called RSD — Rejection Sensitive Dysphoria. A brief or neutral message feels like devastating rejection. The pain is neurobiological and completely real. It's not an overreaction. Your brain is wired to detect social threat with much higher intensity.",
+        tool: { label: "Go to RSD support", section: "communication", tab: "rsd", nav: "people" }
+      },
+      {
+        n: 4, name: "Hyperfocus",
+        tagline: "four hours gone on something that wasn't even the point",
+        explanation: "The flip side of attention difficulties — when something captures your interest, everything else disappears. Time, hunger, tiredness, other responsibilities. It's not a superpower or a flaw. It's an all-or-nothing attention system that doesn't have a reliable middle setting.",
+        tool: { label: "Set a Body Double timer", section: "regulate", tab: "toolkit", openTool: "bodydouble", nav: "helpme" }
+      },
+      {
+        n: 5, name: "Task paralysis",
+        tagline: "three things on the list. still can't move",
+        explanation: "You know what needs doing. You want to do it. Your body won't start. This isn't procrastination or laziness — it's a breakdown in the brain's initiation system. The task often feels too big, too vague, or too loaded with expectation. Breaking it into the smallest possible first step is the way through.",
+        tool: { label: "Break it down in Tasks", section: "mybrain", tab: "tasks", nav: "mystuff" }
+      },
+      {
+        n: 6, name: "Revenge bedtime procrastination",
+        tagline: "staying up late just to own a few quiet hours",
+        explanation: "After a day of meeting demands, masking, and performing, staying up late becomes the only time that feels truly yours. It's not self-destructive irrationality — it's your brain trying to reclaim autonomy and quiet. The cost is sleep. The need underneath is real.",
+        tool: { label: "Check your sensory levels", section: "regulate", tab: "sensory", nav: "helpme" }
+      },
+      {
+        n: 7, name: "Doom piles",
+        tagline: "the chair knows. the corner knows.",
+        explanation: "Objects accumulate in specific spots — the chair, the corner, the floor beside the bed. Out of sight means out of mind, so things get put somewhere visible. But visible doesn't mean processed. The pile grows. It's an object permanence and executive function issue, not a character flaw.",
+        tool: { label: "Try a Brain Dump", section: "mybrain", tab: "braindump", nav: "mystuff" }
+      },
+      {
+        n: 8, name: "Object permanence issues",
+        tagline: "if it's not visible, it doesn't exist right now",
+        explanation: "Out of sight genuinely means out of mind — not metaphorically. Medication you can't see won't be taken. Friends you don't contact don't feel present. This is why visible storage, open shelves, and reminders aren't just helpful but necessary. It's not neglect. It's neurological.",
+        tool: { label: "Set up Daily Life Stuff reminders", section: "mybrain", tab: "habits", nav: "mystuff" }
+      },
+      {
+        n: 9, name: "The wall of awful",
+        tagline: "a simple email feels like climbing something",
+        explanation: "A task that should take five minutes has accumulated so much emotional weight — from past failures, shame, avoidance — that approaching it feels physically overwhelming. The wall is real. It's built from every previous attempt and every associated feeling of failure.",
+        tool: { label: "Try a Brain Dump first", section: "mybrain", tab: "braindump", nav: "mystuff" }
+      },
+      {
+        n: 10, name: "Sensory overload",
+        tagline: "one sound. that's all it takes",
+        explanation: "The nervous system becomes overwhelmed by sensory input — sound, light, texture, smell, crowds, temperature. It's not hypersensitivity as a personality trait. It's a nervous system that processes sensory information more intensely than neurotypical brains. The only fix is reducing input.",
+        tool: { label: "Sensory check-in", section: "regulate", tab: "sensory", nav: "helpme" }
+      },
+      {
+        n: 11, name: "Emotional flooding",
+        tagline: "fine, then not fine, within the same breath",
+        explanation: "Emotions arrive fast, full, and all at once. There's no gentle build-up — just suddenly overwhelmed. This is sometimes called emotional dysregulation, but it's better understood as emotional intensity. The feelings are real and valid. The volume is just turned up much higher than average.",
+        tool: { label: "Check in on your mood", section: "regulate", tab: "mood", nav: "helpme" }
+      },
+      {
+        n: 12, name: "Analysis paralysis",
+        tagline: "asked what you want for lunch. system crash",
+        explanation: "Too many options, or the perceived importance of making the 'right' choice, causes complete shutdown. The brain gets caught in a loop of weighing possibilities and can't commit to any of them. It's not indecisiveness as a trait — it's an executive function overload.",
+        tool: { label: "Try a Brain Dump", section: "mybrain", tab: "braindump", nav: "mystuff" }
+      },
+      {
+        n: 13, name: "Waiting mode",
+        tagline: "one 4pm thing and the whole day belongs to it",
+        explanation: "When something is scheduled — even hours away — the brain can't relax into anything else. The upcoming event occupies working memory and makes real focus impossible. Time before the thing feels unusable. This is a working memory and time perception issue, not a mindset problem.",
+        tool: { label: "Set a Body Double timer", section: "regulate", tab: "toolkit", openTool: "bodydouble", nav: "helpme" }
+      },
+      {
+        n: 14, name: "Interest-based nervous system",
+        tagline: "'just do it' doesn't work when the brain won't ignite",
+        explanation: "ADHD brains are often motivated by interest, novelty, urgency, challenge, or passion — not importance or deadlines alone. If something isn't interesting or urgent, the brain genuinely cannot generate the same motivation a neurotypical brain might. This is physiological, not a character flaw.",
+        tool: { label: "Try the Dopamine section", section: "regulate", tab: "dopamine", nav: "helpme" }
+      },
+      {
+        n: 15, name: "Shutdown",
+        tagline: "words stop coming when everything gets too loud",
+        explanation: "When overwhelm reaches a threshold, the brain and body simply stop. Speech becomes difficult or impossible. Movement feels impossible. Emotions go flat. This is a protective neurological response, not manipulation or sulking. The person needs quiet, safety, reduced demands, and time.",
+        tool: { label: "Shutdown support", section: "regulate", tab: "toolkit", openTool: "shutdown", nav: "helpme" }
+      },
+      {
+        n: 16, name: "Masking",
+        tagline: "performing okay, every day, until there's nothing left underneath",
+        explanation: "Consciously or unconsciously suppressing natural ND behaviours to appear neurotypical. Forcing eye contact. Scripting conversations. Suppressing stims. Performing focus. Masking is exhausting and cumulative. The cost is burnout, loss of identity, and sometimes not knowing who you are without the mask.",
+        tool: { label: "Understand your PDA profile", section: "communication", tab: "pda", nav: "people" }
+      },
+      {
+        n: 17, name: "Justice sensitivity",
+        tagline: "you cannot let it go. it's not a choice",
+        explanation: "An intense, visceral reaction to injustice — perceived or real. Rules being broken, unfairness, hypocrisy, people being treated badly. The feeling is overwhelming and urgent. It's not a personality quirk. It's a deeply wired neurological response to perceived violation of fairness.",
+        tool: { label: "Check your mood", section: "regulate", tab: "mood", nav: "helpme" }
+      },
+      {
+        n: 18, name: "Stimming",
+        tagline: "the small movements that bring you back to yourself",
+        explanation: "Repetitive sensory movements or sounds — rocking, tapping, flapping, humming, clicking. Stimming regulates the nervous system. It reduces anxiety, processes emotion, and maintains focus. It is not something to be stopped or suppressed. It is your body doing exactly what it needs to do.",
+        tool: { label: "Try the Stim Space", section: "regulate", tab: "toolkit", openTool: "stim", nav: "helpme" }
+      },
+      {
+        n: 19, name: "Info-dumping",
+        tagline: "it's not a monologue. it's what love sounds like for you",
+        explanation: "Sharing extensive information about a topic you care about — all of it, right now, with whoever is nearby. It's not showing off or ignoring social cues. It's how ND brains express enthusiasm, connection, and care. When someone info-dumps to you, they are trusting you with something that matters to them.",
+        tool: { label: "Go to Communication", section: "communication", tab: "translate", nav: "people" }
+      },
+      {
+        n: 20, name: "The ADHD tax",
+        tagline: "the late fees. the duplicates. the subscription you forgot again",
+        explanation: "The extra money, time, and energy spent because of executive dysfunction. Late fees because the bill was forgotten. Replacing things that were lost. Buying duplicates of things you have but can't find. Subscriptions running for months unforgotten. It's a real financial and emotional cost, and it's not a moral failing.",
+        tool: { label: "Set up Daily Life Stuff", section: "mybrain", tab: "habits", nav: "mystuff" }
+      },
+    ];
+
+    const expanded = namesExpanded;
+    const setExpanded = setNamesExpanded;
+
+    return React.createElement('div', null,
+      // Header
+      React.createElement('div', { style: { background: gt(C.pink + '18', C.purple + '10', 135), border: `1.5px solid ${C.pink}44`, borderRadius: 16, padding: '18px 16px', marginBottom: 20 } },
+        React.createElement('p', { style: { color: C.pink, fontFamily: 'Nunito', fontWeight: 900, fontSize: 20, margin: '0 0 8px' } }, '✨ Finally Have Names'),
+        React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 14, margin: '0 0 10px', lineHeight: 1.7 } }, '20 ADHD and neurodivergent experiences that finally have words. Tap any one to read more — and find support inside the app.'),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontWeight: 700, fontSize: 12, fontStyle: 'italic', margin: 0 } }, '"You weren\'t failing. You just didn\'t have the language yet. Now you do."')
+      ),
+
+      // All 20 items
+      NAMES.map(item => React.createElement('div', { key: item.n, style: { marginBottom: 8 } },
+        // Row button
+        React.createElement('button', {
+          onClick: () => setExpanded(e => e === item.n ? null : item.n),
+          style: {
+            display: 'flex', alignItems: 'center', gap: 12, width: '100%', textAlign: 'left',
+            background: expanded === item.n ? C.pink + '15' : C.card,
+            border: `1.5px solid ${expanded === item.n ? C.pink : C.border}`,
+            borderRadius: expanded === item.n ? '14px 14px 0 0' : 14,
+            padding: '14px 16px', cursor: 'pointer', transition: 'all 0.2s',
+          }
+        },
+          React.createElement('div', { style: { width: 28, height: 28, borderRadius: 8, background: C.pink + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 } },
+            React.createElement('span', { style: { color: C.pink, fontFamily: 'Nunito', fontWeight: 800, fontSize: 12 } }, item.n)
+          ),
+          React.createElement('div', { style: { flex: 1, minWidth: 0 } },
+            React.createElement('div', { style: { color: expanded === item.n ? C.pink : C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15 } }, item.name),
+            React.createElement('div', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, lineHeight: 1.4 } }, item.tagline)
+          ),
+          React.createElement('span', { style: { color: C.muted, fontSize: 13, transform: expanded === item.n ? 'rotate(180deg)' : 'none', display: 'inline-block', transition: 'transform 0.2s' } }, '▾')
+        ),
+
+        // Expanded content
+        expanded === item.n && React.createElement('div', { style: { background: C.card, border: `1.5px solid ${C.pink}`, borderTop: 'none', borderRadius: '0 0 14px 14px', padding: '16px 16px 18px' } },
+          React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 14, lineHeight: 1.75, margin: '0 0 16px' } }, item.explanation),
+          item.tool && React.createElement('button', {
+            onClick: () => {
+              navigateTo(item.tool.section, item.tool.tab);
+              setBottomNav(item.tool.nav);
+              if (item.tool.openTool) setOpenTool(item.tool.openTool);
+              setExpanded(null);
+            },
+            style: { ...btn(C.pink, { width: '100%', padding: 12, fontSize: 14 }) }
+          }, '→ ' + item.tool.label)
+        )
+      )),
+
+      // Footer
+      React.createElement('div', { style: { textAlign: 'center', padding: '20px 0 8px' } },
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 13, fontStyle: 'italic', lineHeight: 1.7 } }, '"You weren\'t failing.\nYou just didn\'t have the language yet.\nNow you do."')
+      )
+    );
+  }
+
   function renderTab(tabId) {
     const map = {
       rsd: renderRSD,
@@ -2965,6 +3609,8 @@ function App() {
       toolkit: renderToolkit,
       disclosure: renderDisclosure,
       safetyplan: renderSafetyPlan,
+      names: renderFinallyHaveNames,
+      work: renderWork,
     };
     return map[tabId] ? map[tabId]() : null;
   }
@@ -2974,6 +3620,38 @@ function App() {
   const currentSectionTabs = currentSection ? currentSection.tabs : [];
 
   // Show account or privacy screen
+
+  // ── PHASE 1 NAV HELPERS ──────────────────────────────────────────────────
+  const TOOL_GROUPS = [
+    { title: 'Calm my body and brain', color: C.yellow, items: [['regulate','mood'],['regulate','sensory'],['regulate','dopamine'],['regulate','toolkit']] },
+    { title: 'When people are hard', color: C.pink, items: [['communication','rsd'],['communication','translate'],['communication','decode'],['communication','pda']] },
+    { title: 'Get things out of my head', color: C.teal, items: [['mybrain','tasks'],['mybrain','braindump'],['mybrain','habits']] },
+    { title: 'Explain myself', color: C.blue, items: [['aboutme','disclosure'],['work','work']] },
+  ];
+  const navRow = (key, icon, name, desc, color, onClick) => React.createElement('button', {
+    key, onClick,
+    style: { display: 'flex', alignItems: 'center', gap: 14, width: '100%', background: C.card, border: `1.5px solid ${C.border}`, borderRadius: 18, padding: '14px 16px', marginBottom: 10, cursor: 'pointer', textAlign: 'left' }
+  },
+    React.createElement('div', { style: { width: 46, height: 46, borderRadius: 14, background: color + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 } }, icon),
+    React.createElement('div', null,
+      React.createElement('div', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, marginBottom: 2 } }, name),
+      desc && React.createElement('div', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.4 } }, desc)
+    )
+  );
+  const inTabView = !!(activeTab && section && SECTIONS[section]);
+  const tabView = () => {
+    const sec = SECTIONS[section];
+    const tb = sec.tabs.find(x => x.id === activeTab);
+    return React.createElement('div', null,
+      React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 } },
+        React.createElement('button', { onClick: () => { setActiveTab(null); setSection(null); }, style: { background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 20, padding: '6px 14px', color: C.muted, fontFamily: 'Nunito', fontSize: 13, cursor: 'pointer' } }, '← Back'),
+        tb && React.createElement('h3', { style: { color: sec.color, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, margin: 0 } }, tb.icon + ' ' + tb.name)
+      ),
+      renderTab(activeTab)
+    );
+  };
+  const goHelp = (sec, tab, nav) => { setHelpNowOpen(false); navigateTo(sec, tab); setBottomNav(nav); };
+
   if (accountScreen === 'account') return React.createElement('div', { style: { background: C.bg, minHeight: '100vh' } }, renderAccount());
   if (accountScreen === 'privacy') return React.createElement('div', { style: { background: C.bg, minHeight: '100vh' } }, renderPrivacy());
 
@@ -3037,6 +3715,36 @@ function App() {
 
     // Floating ND words — removed to keep text readable
 
+    // Nickname modal
+    nicknamePrompt && React.createElement('div', {
+      onClick: () => setNicknamePrompt(false),
+      style: { position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24 }
+    },
+      React.createElement('div', {
+        onClick: e => e.stopPropagation(),
+        style: { background: C.card, borderRadius: 24, padding: '28px 24px', width: '100%', maxWidth: 340, border: `1.5px solid ${C.teal}` }
+      },
+        React.createElement('p', { style: { fontSize: 32, textAlign: 'center', marginBottom: 10 } }, '✨'),
+        React.createElement('h3', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 900, fontSize: 20, margin: '0 0 8px', textAlign: 'center' } }, 'Make it yours'),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 20px', textAlign: 'center', lineHeight: 1.6 } }, 'Give your space a name. It can be your name, a word that feels safe, or anything that feels like yours.'),
+        React.createElement('input', {
+          placeholder: "e.g. Gemma's Space, My Calm, Safe Space...",
+          value: appNickname,
+          onChange: e => setAppNickname(e.target.value),
+          onKeyDown: e => e.key === 'Enter' && setNicknamePrompt(false),
+          style: { ...input({ marginBottom: 16, textAlign: 'center', fontSize: 16 }), fontFamily: 'Nunito', fontWeight: 700 }
+        }),
+        React.createElement('button', {
+          onClick: () => setNicknamePrompt(false),
+          style: { ...btn(C.teal, { width: '100%', padding: 14, fontSize: 15 }) }
+        }, appNickname ? '✓ Save' : 'Keep it as Steady'),
+        appNickname && React.createElement('button', {
+          onClick: () => { setAppNickname(''); setNicknamePrompt(false); },
+          style: { ...btn(C.muted, { width: '100%', marginTop: 8 }) }
+        }, 'Reset to Steady')
+      )
+    ),
+
     // Toast notification
     toast && React.createElement('div', { style: { position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)', background: C.teal, color: '#000', padding: '10px 20px', borderRadius: 20, fontFamily: 'Nunito', fontWeight: 700, fontSize: 13, zIndex: 9999, animation: 'toastIn 0.3s ease', whiteSpace: 'nowrap', maxWidth: '90vw', boxShadow: `0 0 30px ${C.teal}66` } }, toast),
 
@@ -3083,7 +3791,10 @@ function App() {
 
       // ── HEADER ─────────────────────────────────────────────────────────────
       React.createElement('div', { style: { padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
-        React.createElement('h1', { style: { fontFamily: 'Nunito', fontWeight: 900, fontSize: 20, margin: 0, background: `linear-gradient(135deg, ${C.teal}, ${C.pink}, ${C.blue})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' } }, 'Steady'),
+        React.createElement('div', { style: { cursor: 'pointer' }, onClick: () => setNicknamePrompt(true) },
+          React.createElement('h1', { style: { fontFamily: 'Nunito', fontWeight: 900, fontSize: 20, margin: 0, background: `linear-gradient(135deg, ${C.teal}, ${C.pink}, ${C.blue})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' } }, appNickname || 'Steady'),
+          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 11, margin: 0, letterSpacing: 0.3 } }, appNickname ? 'your neurodivergent support app' : 'tap to make this yours ✨')
+        ),
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
           React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 } },
             React.createElement('button', { onClick: () => setThemePanelOpen(o => !o), style: { width: 22, height: 22, borderRadius: '50%', border: `1.5px solid ${C.border}`, background: `conic-gradient(${C.teal} 0deg 90deg, ${C.pink} 90deg 180deg, ${C.yellow} 180deg 270deg, ${C.blue} 270deg 360deg)`, cursor: 'pointer', padding: 0, boxShadow: themePanelOpen ? `0 0 0 2px ${C.teal}` : 'none' } }),
@@ -3102,7 +3813,7 @@ function App() {
       React.createElement('div', { style: { padding: '0 16px' } },
 
         // ── CHECK IN ─────────────────────────────────────────────────────────
-        bottomNav === 'checkin' && React.createElement('div', null,
+        bottomNav === 'home' && React.createElement('div', null,
           React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 12, margin: '0 0 6px' } }, '💡 ' + TIPS[tipIdx]),
           // Wizard as check-in
           !needsWizard && !wizardAnswer && React.createElement('div', { style: { background: gt(C.teal + '22', C.pink + '18', 135), border: `2px solid ${C.teal}55`, borderRadius: 20, padding: '20px', marginBottom: 16 } },
@@ -3158,122 +3869,68 @@ function App() {
           )
         ),
 
-        // ── HELP ME (Regulate) ────────────────────────────────────────────────
-        bottomNav === 'helpme' && React.createElement('div', null,
-          activeTab && section === 'regulate'
-            ? React.createElement('div', null,
-                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 } },
-                  React.createElement('button', { onClick: () => { setActiveTab(null); setSection(null); }, style: { background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 20, padding: '6px 14px', color: C.muted, cursor: 'pointer', fontFamily: 'Nunito', fontSize: 13 } }, '← Back'),
-                  React.createElement('h3', { style: { color: C.yellow, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, margin: 0 } }, SECTIONS.regulate.tabs.find(t => t.id === activeTab)?.icon + ' ' + SECTIONS.regulate.tabs.find(t => t.id === activeTab)?.name)
-                ),
-                renderTab(activeTab)
-              )
-            : React.createElement('div', null,
-                React.createElement('h2', { style: { color: C.yellow, fontFamily: 'Nunito', fontWeight: 900, fontSize: 22, margin: '0 0 4px' } }, '⚡ Help me'),
-                React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 20px' } }, 'Tools to calm your body and mind'),
-                SECTIONS.regulate.tabs.map(tab => React.createElement('button', {
-                  key: tab.id, onClick: () => navigateTo('regulate', tab.id),
-                  style: { display: 'flex', alignItems: 'center', gap: 16, width: '100%', background: C.card, border: `1.5px solid ${C.border}`, borderRadius: 18, padding: '18px', marginBottom: 10, cursor: 'pointer', textAlign: 'left', transition: 'all 0.15s' }
-                },
-                  React.createElement('div', { style: { width: 50, height: 50, borderRadius: 14, background: C.yellow + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 } }, tab.icon),
-                  React.createElement('div', null,
-                    React.createElement('div', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, marginBottom: 4 } }, tab.name),
-                    React.createElement('div', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.4 } }, tab.desc)
-                  )
-                ))
-              )
-        ),
+        // ── TOOLS ────────────────────────────────────────────────────────────
+        bottomNav === 'tools' && (inTabView ? tabView() : React.createElement('div', null,
+          React.createElement('h2', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 900, fontSize: 22, margin: '0 0 4px' } }, '🧰 Tools'),
+          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 18px' } }, 'Pick what you need. Not sure where to start? Tap Home and tell us how you feel.'),
+          TOOL_GROUPS.map(g => React.createElement('div', { key: g.title, style: { marginBottom: 14 } },
+            React.createElement('p', { style: { color: g.color, fontFamily: 'Nunito', fontWeight: 800, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, margin: '0 0 8px' } }, g.title),
+            g.items.map(([s, tb]) => {
+              const tabObj = SECTIONS[s].tabs.find(x => x.id === tb);
+              return navRow(s + tb, tabObj.icon, tabObj.name, tabObj.desc, g.color, () => navigateTo(s, tb));
+            })
+          ))
+        )),
 
-        // ── MY STUFF (My Brain) ───────────────────────────────────────────────
-        bottomNav === 'mystuff' && React.createElement('div', null,
-          activeTab && section === 'mybrain'
-            ? React.createElement('div', null,
-                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 } },
-                  React.createElement('button', { onClick: () => { setActiveTab(null); setSection(null); }, style: { background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 20, padding: '6px 14px', color: C.muted, cursor: 'pointer', fontFamily: 'Nunito', fontSize: 13 } }, '← Back'),
-                  React.createElement('h3', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, margin: 0 } }, SECTIONS.mybrain.tabs.find(t => t.id === activeTab)?.icon + ' ' + SECTIONS.mybrain.tabs.find(t => t.id === activeTab)?.name)
-                ),
-                renderTab(activeTab)
-              )
-            : React.createElement('div', null,
-                React.createElement('h2', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 900, fontSize: 22, margin: '0 0 4px' } }, '🧠 My stuff'),
-                React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 20px' } }, 'Tasks, thoughts and life stuff'),
-                SECTIONS.mybrain.tabs.map(tab => React.createElement('button', {
-                  key: tab.id, onClick: () => navigateTo('mybrain', tab.id),
-                  style: { display: 'flex', alignItems: 'center', gap: 16, width: '100%', background: C.card, border: `1.5px solid ${C.border}`, borderRadius: 18, padding: '18px', marginBottom: 10, cursor: 'pointer', textAlign: 'left' }
-                },
-                  React.createElement('div', { style: { width: 50, height: 50, borderRadius: 14, background: C.teal + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 } }, tab.icon),
-                  React.createElement('div', null,
-                    React.createElement('div', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, marginBottom: 4 } }, tab.name),
-                    React.createElement('div', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.4 } }, tab.desc)
-                  )
-                ))
-              )
-        ),
+        // ── MY STEADY ────────────────────────────────────────────────────────
+        bottomNav === 'mysteady' && (inTabView ? tabView() : React.createElement('div', null,
+          React.createElement('h2', { style: { color: C.purple, fontFamily: 'Nunito', fontWeight: 900, fontSize: 22, margin: '0 0 4px' } }, '💙 My ' + (appNickname || 'Steady')),
+          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 18px' } }, 'Your plan, your words, and your account'),
+          navRow('sp', '🛟', 'My Safety Plan', 'Your personal plan for meltdown and overwhelm, written when you\'re calm', C.purple, () => navigateTo('safetyplan', 'safetyplan')),
+          navRow('fhn', '✨', 'Finally Have Names', '20 ADHD and ND experiences that finally have words', C.pink, () => navigateTo('names', 'names')),
+          navRow('acc', '👤', 'Account and settings', 'Sign in details, password, privacy and your data', C.blue, () => setAccountScreen('account')),
+          navRow('priv', '🔒', 'Privacy policy', 'How your information is looked after', C.teal, () => setAccountScreen('privacy'))
+        ))
+      ),
 
-        // ── PEOPLE (Communication) ────────────────────────────────────────────
-        bottomNav === 'people' && React.createElement('div', null,
-          activeTab && section === 'communication'
-            ? React.createElement('div', null,
-                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 } },
-                  React.createElement('button', { onClick: () => { setActiveTab(null); setSection(null); }, style: { background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 20, padding: '6px 14px', color: C.muted, cursor: 'pointer', fontFamily: 'Nunito', fontSize: 13 } }, '← Back'),
-                  React.createElement('h3', { style: { color: C.pink, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, margin: 0 } }, SECTIONS.communication.tabs.find(t => t.id === activeTab)?.icon + ' ' + SECTIONS.communication.tabs.find(t => t.id === activeTab)?.name)
-                ),
-                renderTab(activeTab)
-              )
-            : React.createElement('div', null,
-                React.createElement('h2', { style: { color: C.pink, fontFamily: 'Nunito', fontWeight: 900, fontSize: 22, margin: '0 0 4px' } }, '💬 People'),
-                React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 20px' } }, 'When people are hard, or you\'re hard to understand'),
-                SECTIONS.communication.tabs.map(tab => React.createElement('button', {
-                  key: tab.id, onClick: () => navigateTo('communication', tab.id),
-                  style: { display: 'flex', alignItems: 'center', gap: 16, width: '100%', background: C.card, border: `1.5px solid ${C.border}`, borderRadius: 18, padding: '18px', marginBottom: 10, cursor: 'pointer', textAlign: 'left' }
-                },
-                  React.createElement('div', { style: { width: 50, height: 50, borderRadius: 14, background: C.pink + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 } }, tab.icon),
-                  React.createElement('div', null,
-                    React.createElement('div', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, marginBottom: 4 } }, tab.name),
-                    React.createElement('div', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.4 } }, tab.desc)
-                  )
-                ))
-              )
-        ),
+      // ── NEED HELP NOW? (always visible) ─────────────────────────────────────
+      !helpNowOpen && React.createElement('button', {
+        onClick: () => setHelpNowOpen(true),
+        'aria-label': 'Need help now?',
+        style: { position: 'fixed', right: 12, bottom: 'calc(72px + env(safe-area-inset-bottom, 0px))', zIndex: 150, background: C.pink, color: '#000', border: 'none', borderRadius: 24, padding: '10px 16px', fontFamily: 'Nunito', fontWeight: 800, fontSize: 13, cursor: 'pointer', boxShadow: '0 4px 14px rgba(0,0,0,0.35)' }
+      }, '🆘 Need help now?'),
 
-        // ── MORE ──────────────────────────────────────────────────────────────
-        bottomNav === 'more' && React.createElement('div', null,
-          activeTab && (section === 'aboutme' || section === 'safetyplan')
-            ? React.createElement('div', null,
-                React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 } },
-                  React.createElement('button', { onClick: () => { setActiveTab(null); setSection(null); }, style: { background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 20, padding: '6px 14px', color: C.muted, cursor: 'pointer', fontFamily: 'Nunito', fontSize: 13 } }, '← Back'),
-                ),
-                renderTab(activeTab)
-              )
-            : React.createElement('div', null,
-                React.createElement('h2', { style: { color: C.purple, fontFamily: 'Nunito', fontWeight: 900, fontSize: 22, margin: '0 0 4px' } }, '☰ More'),
-                React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 20px' } }, 'Safety plan, about me, and games'),
-                [
-                  { icon: '🛟', label: 'Safety Plan', desc: 'Your personal crisis plan — written when you\'re calm', section: 'safetyplan', tab: 'safetyplan', color: C.purple },
-                  { icon: '💙', label: 'About Me', desc: 'Scripts to explain yourself to others', section: 'aboutme', tab: 'disclosure', color: C.blue },
-                  { icon: '🎮', label: 'Games', desc: 'Snake, Block Drop, Nonogram — dopamine the fun way', section: 'regulate', tab: 'dopamine', color: C.pink },
-                ].map(item => React.createElement('button', {
-                  key: item.tab, onClick: () => { navigateTo(item.section, item.tab); if (item.section === 'regulate') setBottomNav('helpme'); },
-                  style: { display: 'flex', alignItems: 'center', gap: 16, width: '100%', background: C.card, border: `1.5px solid ${C.border}`, borderRadius: 18, padding: '18px', marginBottom: 10, cursor: 'pointer', textAlign: 'left' }
-                },
-                  React.createElement('div', { style: { width: 50, height: 50, borderRadius: 14, background: item.color + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 24, flexShrink: 0 } }, item.icon),
-                  React.createElement('div', null,
-                    React.createElement('div', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, marginBottom: 4 } }, item.label),
-                    React.createElement('div', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.4 } }, item.desc)
-                  )
-                ))
-              )
+      helpNowOpen && React.createElement('div', { style: { position: 'fixed', inset: 0, background: C.bg, zIndex: 500, overflowY: 'auto', padding: '24px 18px 40px' } },
+        React.createElement('div', { style: { maxWidth: 480, margin: '0 auto' } },
+          React.createElement('h2', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 900, fontSize: 24, margin: '0 0 6px' } }, 'You\'re not alone. Let\'s slow this down.'),
+          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 14, lineHeight: 1.6, margin: '0 0 20px' } }, 'You don\'t have to fix anything right now. Pick one thing.'),
+          navRow('h1', '🌬️', 'Breathe with me', 'Breathing and grounding tools', C.teal, () => goHelp('regulate', 'toolkit', 'tools')),
+          navRow('h2', '👁️', 'Is it too much around me?', 'Quick sensory check: sound, light, touch', C.blue, () => goHelp('regulate', 'sensory', 'tools')),
+          navRow('h3', '🛟', 'Open my safety plan', 'The plan you wrote when you were calm', C.purple, () => goHelp('safetyplan', 'safetyplan', 'mysteady')),
+          React.createElement('p', { style: { color: C.pink, fontFamily: 'Nunito', fontWeight: 800, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, margin: '22px 0 8px' } }, 'If you need to talk to someone (UK)'),
+          React.createElement('div', { style: { ...card({ marginBottom: 10 }) } },
+            React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 4px' } }, 'In danger, or have hurt yourself?'),
+            React.createElement('a', { href: 'tel:999', style: { ...btn(C.pink, { display: 'block', textAlign: 'center', textDecoration: 'none', padding: 12 }) } }, 'Call 999')
+          ),
+          React.createElement('div', { style: { ...card({ marginBottom: 10 }) } },
+            React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 4px' } }, 'Samaritans, free, any time'),
+            React.createElement('a', { href: 'tel:116123', style: { ...btn(C.teal, { display: 'block', textAlign: 'center', textDecoration: 'none', padding: 12 }) } }, 'Call 116 123')
+          ),
+          React.createElement('div', { style: { ...card({ marginBottom: 10 }) } },
+            React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 4px' } }, 'Prefer to text? Shout, free, 24/7'),
+            React.createElement('a', { href: 'sms:85258?body=SHOUT', style: { ...btn(C.blue, { display: 'block', textAlign: 'center', textDecoration: 'none', padding: 12 }) } }, 'Text SHOUT to 85258')
+          ),
+          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, lineHeight: 1.6, margin: '4px 0 18px' } }, 'In England you can also call NHS 111 and choose the mental health option.'),
+          React.createElement('button', { onClick: () => setHelpNowOpen(false), style: { ...btn(C.muted, { width: '100%', padding: 14, fontSize: 15 }) } }, 'I\'m okay for now')
         )
       ),
 
       // ── BOTTOM NAV BAR ──────────────────────────────────────────────────────
       React.createElement('div', { style: { position: 'fixed', bottom: 0, left: 0, right: 0, background: C.bg, borderTop: `1px solid ${C.border}`, display: 'flex', zIndex: 100, paddingBottom: 'env(safe-area-inset-bottom, 0px)', maxWidth: 480, margin: '0 auto' } },
         [
-          { id: 'checkin', icon: '✨', label: 'Check In' },
-          { id: 'helpme', icon: '⚡', label: 'Help Me' },
-          { id: 'mystuff', icon: '🧠', label: 'My Stuff' },
-          { id: 'people', icon: '💬', label: 'People' },
-          { id: 'more', icon: '☰', label: 'More' },
+          { id: 'home', icon: '🏠', label: 'Home' },
+          { id: 'tools', icon: '🧰', label: 'Tools' },
+          { id: 'mysteady', icon: '💙', label: 'My ' + (appNickname || 'Steady') },
         ].map(tab => React.createElement('button', {
           key: tab.id,
           onClick: () => { setBottomNav(tab.id); setActiveTab(null); setSection(null); },
