@@ -851,7 +851,7 @@ function App() {
   // Jump back to the top whenever the person moves to a new screen or sub-page
   useEffect(() => {
     try { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; } catch(e) {}
-  }, [bottomNav, section, activeTab, screen, accountScreen, wizardAnswer, openTool, workView, rsdView, pdaView, dopamineTab, helpNowOpen]);
+  }, [bottomNav, section, activeTab, screen, accountScreen, wizardAnswer, workView, rsdView, pdaView, helpNowOpen]);
 
   // ── localStorage persistence ───────────────────────────────────────────────
 
