@@ -2513,8 +2513,7 @@ function App() {
                   ['IAPMD', 'International charity with peer support and resources', 'https://iapmd.org/'],
                 ]],
                 ['ADHD and hormones', [
-                  ['ADHD Foundation: Women and ADHD', 'Why ADHD is often missed in women', 'https://adhdfoundation.org.uk/guest-articles/women-and-adhd/'],
-                  ['ADHD Foundation: ADHD and the perimenopause (PDF)', 'How hormonal change can affect ADHD symptoms', 'https://www.adhdfoundation.org.uk/assets/resources/adhd-and-the-perimenopause.pdf'],
+                  ['ADHD Foundation', 'UK neurodiversity charity. Use its Resources section for women and ADHD, adults and employers', 'https://www.adhdfoundation.org.uk/'],
                   ['NHS: ADHD in adults', 'Symptoms, diagnosis and treatment', 'https://www.nhs.uk/conditions/adhd-adults/'],
                 ]],
               ].map(([heading, links]) => React.createElement('div', { key: heading, style: { marginBottom: 10 } },
