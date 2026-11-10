@@ -853,6 +853,9 @@ function App() {
     try { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; } catch(e) {}
   }, [bottomNav, section, activeTab, screen, accountScreen, wizardAnswer, workView, rsdView, pdaView, helpNowOpen]);
 
+  // Close any open dropdowns on the Work pages when moving to another page
+  useEffect(() => { setWorkExpanded(null); }, [workView, bottomNav, section, activeTab]);
+
   // ── localStorage persistence ───────────────────────────────────────────────
 
   // Load saved session on mount (the Supabase SDK keeps the session)
@@ -3245,7 +3248,11 @@ function App() {
         )
       )),
       React.createElement('div', { style: { ...card({ marginTop: 8, borderColor: C.teal + '44' }) } },
-        React.createElement('p', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 10px' } }, '✉️ Template: Requesting reasonable adjustments'),
+        React.createElement('button', { onClick: () => setWorkExpanded(workExpanded === 'template' ? null : 'template'), style: { display: 'flex', alignItems: 'center', gap: 10, width: '100%', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' } },
+          React.createElement('span', { style: { flex: 1, color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15 } }, '✉️ Template: Requesting reasonable adjustments'),
+          React.createElement('span', { style: { color: C.muted, fontSize: 13, transform: workExpanded === 'template' ? 'rotate(180deg)' : 'none', display: 'inline-block' } }, '▾')
+        ),
+        workExpanded === 'template' && React.createElement('div', { style: { marginTop: 10 } },
         React.createElement('div', { style: { background: C.bg, borderRadius: 10, padding: '14px', marginBottom: 12, border: `1px solid ${C.border}` } },
           React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.8, margin: 0, whiteSpace: 'pre-line' } },
             `Subject: Request for Reasonable Adjustments
@@ -3278,6 +3285,7 @@ Thank you for your support.
           },
           style: { ...btn(C.teal, { width: '100%' }) }
         }, '📋 Copy template')
+        )
       )
     );
 
