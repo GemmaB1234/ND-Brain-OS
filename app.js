@@ -703,6 +703,8 @@ function App() {
   const [fbText, setFbText] = useState('');
   const [fbReply, setFbReply] = useState(false);
   const [fbStatus, setFbStatus] = useState('idle'); // idle | sending | sent | error
+  const [packOpen, setPackOpen] = useState(null);
+  const [plusStatus, setPlusStatus] = useState(() => { try { return localStorage.getItem('steady_menuplus_waitlist') ? 'joined' : 'idle'; } catch(e) { return 'idle'; } }); // idle | sending | joined | error
   const [points, setPoints] = useState(0);
   const [toast, setToast] = useState(null);
   const [toastMsgIdx, setToastMsgIdx] = useState(0);
@@ -955,6 +957,16 @@ function App() {
       if (Array.isArray(res) && res[0]) { setFbStatus('sent'); setFbText(''); setFbReply(false); }
       else setFbStatus('error');
     } catch(e) { setFbStatus('error'); }
+  }
+
+  async function joinMenuPlusWaitlist() {
+    if (plusStatus === 'sending' || plusStatus === 'joined') return;
+    setPlusStatus('sending');
+    try {
+      const res = await sbRest('POST', 'feedback', { user_id: user ? user.id : null, kind: 'waitlist', message: 'Menu Plus waitlist', reply_ok: true, reply_email: user ? user.email : null }, authToken);
+      if (Array.isArray(res) && res[0]) { setPlusStatus('joined'); try { localStorage.setItem('steady_menuplus_waitlist', '1'); } catch(e) {} }
+      else setPlusStatus('error');
+    } catch(e) { setPlusStatus('error'); }
   }
 
   async function saveWorkPassport() {
@@ -2377,6 +2389,16 @@ function App() {
           { id: 'sides', icon: '🥗', name: 'Sides', hint: 'Do alongside something boring.', color: C.blue, ideas: ['Podcast while folding washing', 'Music while cooking', 'Fidget toy on a call', 'Body double on video'] },
           { id: 'desserts', icon: '🍰', name: 'Desserts', hint: 'Nice, but best with a time limit.', color: C.pink, ideas: ['One episode, then stop', 'Scroll for 10 minutes (timer on)', 'A game for 15 minutes (timer on)'] },
         ];
+        const PACKS = [
+          { id: 'body', icon: '🫶', name: 'Tiny body resets', color: C.teal, basis: 'Based on: body awareness and sensory regulation basics', note: 'Small things that change how your body feels, for when words and plans are too much.', items: [['starters','Splash cold water on your face or wrists'],['starters','Hold something warm for a minute'],['starters','Press your feet into the floor and notice them'],['starters','Shoulder rolls and a big stretch'],['sides','Wear your comfiest clothes today'],['mains','Take a slow shower or bath']] },
+          { id: 'ba', icon: '🌱', name: 'Small steps for low mood', color: C.green || C.teal, basis: 'Based on: behavioural activation, which has good clinical evidence', note: 'The idea: do one small thing first, and motivation often follows rather than comes before. Pick something tiny.', items: [['starters','Open the curtains or step outside for 2 minutes'],['starters','Put on one song you used to love'],['mains','Do one 10 minute thing you used to enjoy'],['mains','Short walk, no phone'],['mains','Text a friend and arrange a tiny plan'],['sides','Do a boring chore with a good podcast on']] },
+          { id: 'ibns', icon: '🔥', name: 'Interest, novelty, challenge, urgency', color: C.orange, basis: 'Based on: the "interest-based nervous system" idea from ADHD communities. A helpful framework, not a proven clinical model', note: 'Many ADHD brains get going through interest, newness, challenge or a deadline rather than importance. Use these to get unstuck.', items: [['starters','Race a 5 minute timer on one task'],['starters','Try a new route or a new song'],['mains','Turn a task into a game with a score'],['mains','Learn one new thing about a topic you love'],['sides','Body double: work alongside someone on video'],['desserts','A hobby session, with a timer']] },
+          { id: 'connect', icon: '💬', name: 'Connection and body doubling', color: C.blue, basis: 'Based on: peer support and co-working ideas', note: 'Low-pressure ways to feel less alone, without needing to be "on".', items: [['starters','Send a meme or kind emoji to someone'],['starters','Voice note instead of typing'],['sides','Co-work with a friend on a call, cameras optional'],['mains','Cuppa with someone who gets you'],['mains','Join an online focus room']] },
+          { id: 'cycle1', icon: '🌙', name: 'Cycle: period days', color: C.pink, basis: 'General energy-matching ideas. Everyone\'s cycle is different', note: 'Many people have less energy around their period. These are gentle ideas, not rules. If your mood drops badly before your period, it\'s worth talking to your GP. PMDD is a recognised condition and you deserve support. If you ever feel unsafe, tap "Need help now?".', items: [['starters','Hot water bottle or warm drink'],['starters','Lie down for 10 minutes, no guilt'],['mains','Gentle stretch or yoga'],['mains','Comfort film under a blanket'],['sides','Cancel or soften one plan']] },
+          { id: 'cycle2', icon: '🌱', name: 'Cycle: after your period', color: C.green || C.teal, basis: 'General energy-matching ideas. Everyone\'s cycle is different', note: 'Some people feel energy and focus returning. If that\'s you, it can be a good time to start things.', items: [['starters','Write a short plan for the week'],['mains','Start a small project you\'ve been putting off'],['mains','Try something new, e.g. a new recipe or route'],['sides','Do your hardest task with a favourite playlist']] },
+          { id: 'cycle3', icon: '☀️', name: 'Cycle: mid-cycle', color: C.yellow, basis: 'General energy-matching ideas. Everyone\'s cycle is different', note: 'Some people feel more sociable and confident around now. Others don\'t. Use what fits.', items: [['mains','Meet a friend or make a call'],['mains','Dance to two or three songs'],['mains','Book something you\'ve been avoiding'],['desserts','A treat out, with a time limit']] },
+          { id: 'cycle4', icon: '🍂', name: 'Cycle: the week before your period', color: C.purple, basis: 'General energy-matching ideas. Everyone\'s cycle is different', note: 'Many people find sensory overload, irritability or low mood harder in the days before their period. These ideas aim to lower demands. If this week is very hard for you, or you feel unsafe, tap "Need help now?" and consider speaking to your GP about PMDD.', items: [['starters','Reduce noise: headphones or a quiet room'],['starters','Eat something with protein, and drink some water'],['mains','Do one thing, not five'],['mains','Write down what\'s swirling in your head'],['sides','Wear soft clothes and keep the lights low'],['desserts','Early night, with a wind-down routine']] },
+        ];
         const save = (m) => { setDopamineMenu(m); saveDopamineMenu(m); };
         const addItem = (cat, text) => { const v = (text || '').trim(); if (!v || dopamineMenu[cat].includes(v)) return; save({ ...dopamineMenu, [cat]: [...dopamineMenu[cat], v] }); };
         const removeItem = (cat, i) => save({ ...dopamineMenu, [cat]: dopamineMenu[cat].filter((_, k) => k !== i) });
@@ -2429,7 +2451,48 @@ function App() {
               React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 11, margin: '0 0 6px' } }, 'Tap to add an idea:'),
               React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6 } }, c.ideas.filter(x => !dopamineMenu[c.id].includes(x)).map(x => React.createElement('button', { key: x, onClick: () => addItem(c.id, x), style: { background: 'transparent', border: `1px dashed ${c.color}88`, color: c.color, borderRadius: 16, padding: '5px 10px', fontFamily: 'Nunito Sans', fontSize: 12, cursor: 'pointer' } }, '+ ' + x)))
             )
-          ))
+          )),
+
+          // ── STARTER PACKS ──
+          React.createElement('h3', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 900, fontSize: 17, margin: '22px 0 4px' } }, '📦 Starter packs'),
+          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, lineHeight: 1.6, margin: '0 0 12px' } }, 'Don\'t want to start from scratch? Open a pack and tap the ideas you like to add them to your menu.'),
+          PACKS.map(pk => React.createElement('div', { key: pk.id, style: { ...card({ marginBottom: 10, borderColor: pk.color + '44' }) } },
+            React.createElement('button', { onClick: () => setPackOpen(packOpen === pk.id ? null : pk.id), style: { display: 'flex', alignItems: 'center', gap: 10, width: '100%', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', textAlign: 'left' } },
+              React.createElement('span', { style: { fontSize: 22 } }, pk.icon),
+              React.createElement('span', { style: { flex: 1 } },
+                React.createElement('span', { style: { display: 'block', color: pk.color, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15 } }, pk.name),
+                React.createElement('span', { style: { display: 'block', color: C.muted, fontFamily: 'Nunito Sans', fontSize: 11, marginTop: 2 } }, pk.basis)
+              ),
+              React.createElement('span', { style: { color: C.muted, fontSize: 13, transform: packOpen === pk.id ? 'rotate(180deg)' : 'none', display: 'inline-block' } }, '▾')
+            ),
+            packOpen === pk.id && React.createElement('div', { style: { marginTop: 12 } },
+              React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, lineHeight: 1.6, margin: '0 0 10px' } }, pk.note),
+              pk.items.map(([cat, text]) => {
+                const have = dopamineMenu[cat].includes(text);
+                return React.createElement('button', { key: text, disabled: have, onClick: () => addItem(cat, text), style: { display: 'flex', alignItems: 'center', gap: 8, width: '100%', background: have ? pk.color + '18' : 'transparent', border: `1px solid ${pk.color}44`, borderRadius: 10, padding: '8px 10px', marginBottom: 6, cursor: have ? 'default' : 'pointer', textAlign: 'left' } },
+                  React.createElement('span', { style: { flex: 1, color: C.text, fontFamily: 'Nunito Sans', fontSize: 13 } }, text),
+                  React.createElement('span', { style: { color: pk.color, fontFamily: 'Nunito', fontWeight: 700, fontSize: 11 } }, have ? '✓ added' : '+ ' + (CATS.find(c => c.id === cat) || {}).name)
+                );
+              }),
+              React.createElement('button', { onClick: () => { const m = { ...dopamineMenu }; pk.items.forEach(([cat, text]) => { if (!m[cat].includes(text)) m[cat] = [...m[cat], text]; }); save(m); }, style: { ...btn(pk.color, { width: '100%', padding: 10, marginTop: 4 }) } }, 'Add the whole pack')
+            )
+          )),
+          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 11, lineHeight: 1.6, margin: '4px 0 18px' } }, 'These are general wellbeing ideas, not medical advice. Everyone is different, so keep what helps and ignore the rest.'),
+
+          // ── MENU PLUS TEASER ──
+          React.createElement('div', { style: { ...card({ marginBottom: 12, borderColor: C.purple + '66', background: gt(C.purple + '18', C.pink + '0c', 135) }) } },
+            React.createElement('p', { style: { color: C.purple, fontFamily: 'Nunito', fontWeight: 900, fontSize: 16, margin: '0 0 6px' } }, '✨ Menu Plus (coming soon)'),
+            React.createElement('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.6, margin: '0 0 8px' } }, 'A menu built around you: how you feel today, your energy, and (only if you choose) where you are in your cycle. Your free menu and packs will always stay free.'),
+            plusStatus === 'joined'
+              ? React.createElement('p', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 14, margin: 0 } }, '💙 You\'re on the list. We\'ll email you once when it\'s ready.')
+              : React.createElement('div', null,
+                  user
+                    ? React.createElement('button', { onClick: joinMenuPlusWaitlist, disabled: plusStatus === 'sending', style: { ...btn(C.purple, { width: '100%', padding: 12, opacity: plusStatus === 'sending' ? 0.6 : 1 }) } }, plusStatus === 'sending' ? 'Adding you…' : 'Tell me when it\'s ready')
+                    : React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, margin: 0 } }, 'Log in to join the list.'),
+                  React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 11, lineHeight: 1.5, margin: '8px 0 0' } }, 'We\'ll use the email on your account, once, to tell you it\'s ready. No other emails.'),
+                  plusStatus === 'error' && React.createElement('p', { style: { color: C.pink, fontFamily: 'Nunito Sans', fontSize: 12, margin: '6px 0 0' } }, 'Sorry, that didn\'t work. Please try again later.')
+                )
+          )
         );
       })(),
       dopamineTab === "science" && React.createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: 12 } },
