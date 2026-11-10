@@ -3899,7 +3899,8 @@ Thank you for your support.
       },
         React.createElement('p', { style: { fontSize: 32, textAlign: 'center', marginBottom: 10 } }, '✨'),
         React.createElement('h3', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 900, fontSize: 20, margin: '0 0 8px', textAlign: 'center' } }, 'Make it yours'),
-        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 20px', textAlign: 'center', lineHeight: 1.6 } }, 'Give your space a name. It can be your name, a word that feels safe, or anything that feels like yours.'),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 6px', textAlign: 'center', lineHeight: 1.6 } }, 'We call it Steady. But your brain, your rules! Name this space whatever feels right: calming, silly, or something that makes you smile when you open it.'),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, margin: '0 0 16px', textAlign: 'center', lineHeight: 1.5, fontStyle: 'italic' } }, 'It only changes what you see. Nobody has to know it used to be called Steady. 😉'),
         React.createElement('input', {
           placeholder: "e.g. Gemma's Space, My Calm, Safe Space...",
           value: appNickname,
@@ -3907,6 +3908,10 @@ Thank you for your support.
           onKeyDown: e => e.key === 'Enter' && setNicknamePrompt(false),
           style: { ...input({ marginBottom: 16, textAlign: 'center', fontSize: 16 }), fontFamily: 'Nunito', fontWeight: 700 }
         }),
+        React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 11, textAlign: 'center', margin: '0 0 8px' } }, 'Need a spark? Tap one:'),
+        React.createElement('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6, justifyContent: 'center', marginBottom: 16 } },
+          ['The Calm Cave', 'Brain Gremlin HQ', 'Pocket Sanctuary', 'My Little Orbit', 'Safe Space', 'The Cosy Corner'].map(n => React.createElement('button', { key: n, onClick: () => setAppNickname(n), style: { background: 'transparent', border: `1px dashed ${C.teal}88`, color: C.teal, borderRadius: 16, padding: '5px 10px', fontFamily: 'Nunito Sans', fontSize: 12, cursor: 'pointer' } }, n))
+        ),
         React.createElement('button', {
           onClick: () => setNicknamePrompt(false),
           style: { ...btn(C.teal, { width: '100%', padding: 14, fontSize: 15 }) }
@@ -3966,7 +3971,7 @@ Thank you for your support.
       React.createElement('div', { style: { padding: '14px 16px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' } },
         React.createElement('div', { style: { cursor: 'pointer' }, onClick: () => setNicknamePrompt(true) },
           React.createElement('h1', { style: { fontFamily: 'Nunito', fontWeight: 900, fontSize: 20, margin: 0, background: `linear-gradient(135deg, ${C.teal}, ${C.pink}, ${C.blue})`, WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text' } }, appNickname || 'Steady'),
-          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 11, margin: 0, letterSpacing: 0.3 } }, appNickname ? 'your neurodivergent support app' : 'tap to make this yours ✨')
+          React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 11, margin: 0, letterSpacing: 0.3 } }, appNickname ? 'tap to rename ✨' : 'tap to make this yours ✨')
         ),
         React.createElement('div', { style: { display: 'flex', alignItems: 'center', gap: 10 } },
           React.createElement('div', { style: { display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 } },
@@ -4111,7 +4116,7 @@ Thank you for your support.
           { id: 'home', icon: '🏠', label: 'Home' },
           { id: 'tools', icon: '🧰', label: 'Tools' },
           { id: 'work', icon: '💼', label: 'Work' },
-          { id: 'mysteady', icon: '💙', label: 'My ' + (appNickname || 'Steady') },
+          { id: 'mysteady', icon: '💙', label: appNickname ? (appNickname.length > 11 ? appNickname.slice(0, 10) + '…' : appNickname) : 'My Steady' },
         ].map(tab => React.createElement('button', {
           key: tab.id,
           onClick: () => { setBottomNav(tab.id); setActiveTab(null); setSection(null); },
