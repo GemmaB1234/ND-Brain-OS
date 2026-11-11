@@ -703,6 +703,13 @@ function App() {
   const [fbText, setFbText] = useState('');
   const [fbReply, setFbReply] = useState(false);
   const [fbStatus, setFbStatus] = useState('idle'); // idle | sending | sent | error
+  const [bdView, setBdView] = useState('home'); // home | check | result | explain | list
+  const [bdCtx, setBdCtx] = useState('work'); // work | personal
+  const [bdStep, setBdStep] = useState(0);
+  const [bdAns, setBdAns] = useState({});
+  const [bdAsk, setBdAsk] = useState('');
+  const [bdDraft, setBdDraft] = useState({ ctx: null, text: '' });
+  const [bdList, setBdList] = useState(() => { try { const s = JSON.parse(localStorage.getItem('steady_boundaries') || 'null'); return s && typeof s === 'object' ? { work: [], personal: [], ...s } : { work: [], personal: [] }; } catch(e) { return { work: [], personal: [] }; } });
   const [packOpen, setPackOpen] = useState(null);
   const [cycleGroupOpen, setCycleGroupOpen] = useState(false);
   const [learnOpen, setLearnOpen] = useState(false);
@@ -859,7 +866,7 @@ function App() {
   // Jump back to the top whenever the person moves to a new screen or sub-page
   useEffect(() => {
     try { window.scrollTo(0, 0); document.documentElement.scrollTop = 0; document.body.scrollTop = 0; } catch(e) {}
-  }, [bottomNav, section, activeTab, screen, accountScreen, wizardAnswer, workView, rsdView, pdaView, helpNowOpen]);
+  }, [bottomNav, section, activeTab, screen, accountScreen, wizardAnswer, workView, rsdView, pdaView, helpNowOpen, bdView, bdStep]);
 
   // Close any open dropdowns on the Work pages when moving to another page
   useEffect(() => { setWorkExpanded(null); }, [workView, bottomNav, section, activeTab]);
@@ -914,6 +921,8 @@ function App() {
       if (spData && spData[0]) { setSafetyPlan(spData[0].plan); setSafetyPlanSaved(spData[0].saved); setSafetyPlanEditing(!spData[0].saved); }
       const wpData = await sbRest('GET', `workplace_passports?user_id=eq.${uid}&select=*`, null, token);
       if (wpData && wpData[0]) { setWorkPassport(wpData[0].passport); setPassportSaved(wpData[0].saved); }
+      const bdData = await sbRest('GET', `boundaries?user_id=eq.${uid}&select=*`, null, token);
+      if (Array.isArray(bdData) && bdData[0] && bdData[0].items) { const l = { work: [], personal: [], ...bdData[0].items }; setBdList(l); try { localStorage.setItem('steady_boundaries', JSON.stringify(l)); } catch(e) {} }
       const dmData = await sbRest('GET', `dopamine_menus?user_id=eq.${uid}&select=*`, null, token);
       if (Array.isArray(dmData) && dmData[0] && dmData[0].menu) { const m = { ...EMPTY_MENU, ...dmData[0].menu }; setDopamineMenu(m); try { localStorage.setItem('steady_dopamine_menu', JSON.stringify(m)); } catch(e) {} }
       const settingsData = await sbRest('GET', `user_settings?user_id=eq.${uid}&select=*`, null, token);
@@ -969,6 +978,19 @@ function App() {
       if (Array.isArray(res) && res[0]) { setPlusStatus('joined'); try { localStorage.setItem('steady_menuplus_waitlist', '1'); } catch(e) {} }
       else setPlusStatus('error');
     } catch(e) { setPlusStatus('error'); }
+  }
+
+  async function saveBoundaries(list) {
+    try { localStorage.setItem('steady_boundaries', JSON.stringify(list)); } catch(e) {}
+    if (!user || !authToken) return;
+    try {
+      const existing = await sbRest('GET', `boundaries?user_id=eq.${user.id}&select=id`, null, authToken);
+      if (Array.isArray(existing) && existing[0]) {
+        await sbRest('PATCH', `boundaries?user_id=eq.${user.id}`, { items: list, updated_at: new Date().toISOString() }, authToken);
+      } else if (Array.isArray(existing)) {
+        await sbRest('POST', 'boundaries', { user_id: user.id, items: list }, authToken);
+      }
+    } catch(e) { console.log('Boundaries save error', e); }
   }
 
   async function saveWorkPassport() {
@@ -1324,6 +1346,7 @@ function App() {
         { id: "rsd", icon: "🛡️", name: plainLanguage ? "Everyone hates me" : "RSD", desc: plainLanguage ? "When you're convinced someone is angry with you or hates you" : "Spiralling about how someone responded? Start here" },
         { id: "translate", icon: "💬", name: plainLanguage ? "Help me understand" : "Translate", desc: plainLanguage ? "Work out what someone meant, or say something clearly" : "Work out what someone meant, or word things so others understand" },
         { id: "decode", icon: "🔍", name: plainLanguage ? "What did that mean?" : "Decode", desc: plainLanguage ? "Make sense of something confusing that just happened" : "Make sense of a specific situation or interaction" },
+        { id: "boundaries", icon: "🧭", name: plainLanguage ? "Saying yes and no" : "Boundaries", desc: "Check if a yes or no feels right, with scripts for work and personal life" },
         { id: "pda", icon: "🌊", name: plainLanguage ? "Why I avoid things" : "PDA", desc: plainLanguage ? "When you can't make yourself do things even when you want to" : "Understand demand avoidance and work with it" },
       ]
     },
@@ -3882,12 +3905,172 @@ Thank you for your support.
     );
   }
 
+  // ── BOUNDARIES: healthy yes and no (work and personal) ─────────────────────
+  function renderBoundaries() {
+    const h = React.createElement;
+    const isWork = bdCtx === 'work';
+    const saveList = (l) => { setBdList(l); saveBoundaries(l); };
+    const addB = (ctx, text) => { const v = (text || '').trim(); if (!v || bdList[ctx].includes(v)) return; saveList({ ...bdList, [ctx]: [...bdList[ctx], v] }); };
+    const rmB = (ctx, i) => saveList({ ...bdList, [ctx]: bdList[ctx].filter((_, k) => k !== i) });
+    const copy = (text, msg) => { try { navigator.clipboard.writeText(text).then(() => { setToast(msg || 'Copied'); setTimeout(() => setToast(null), 2000); }); } catch(e) {} };
+    const muted = (txt, extra) => h('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.6, margin: '0 0 12px', ...(extra || {}) } }, txt);
+    const tile = (icon, title, desc, onClick) => h('button', { onClick, style: { display: 'flex', alignItems: 'center', gap: 14, width: '100%', background: C.card, border: `1.5px solid ${C.border}`, borderRadius: 18, padding: '14px 16px', marginBottom: 10, cursor: 'pointer', textAlign: 'left' } },
+      h('div', { style: { width: 46, height: 46, borderRadius: 14, background: C.blue + '22', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22, flexShrink: 0 } }, icon),
+      h('div', null, h('div', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 16, marginBottom: 2 } }, title), h('div', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.4 } }, desc)));
+    const backBtn = () => h('button', { onClick: () => setBdView('home'), style: { background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 20, padding: '6px 14px', color: C.muted, fontFamily: 'Nunito', fontSize: 13, cursor: 'pointer', marginBottom: 14 } }, '← Boundaries');
+    const ctxToggle = () => h('div', { style: { display: 'flex', gap: 8, marginBottom: 16 } }, [['work', '💼 Work'], ['personal', '🏡 Personal']].map(([id, l]) => h('button', { key: id, onClick: () => setBdCtx(id), style: { ...pill(bdCtx === id, C.blue), flex: 1 } }, l)));
+    const safety = () => h('div', { style: { ...card({ marginTop: 16, borderColor: C.pink + '44' }) } },
+      h('p', { style: { color: C.pink, fontFamily: 'Nunito', fontWeight: 800, fontSize: 13, margin: '0 0 4px' } }, '💗 If saying no feels unsafe'),
+      h('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, lineHeight: 1.6, margin: '0 0 8px' } }, 'If someone reacts with anger, threats or control when you say no, that isn\'t a boundary problem, and it isn\'t your fault. You deserve support. The National Domestic Abuse Helpline is free, 24 hours: 0808 2000 247. Or tap "Need help now?".'),
+      h('a', { href: 'tel:08082000247', style: { ...btn(C.pink, { display: 'block', textAlign: 'center', textDecoration: 'none', padding: 10, fontSize: 13 }) } }, '📞 0808 2000 247'));
+
+    // ---------- HOME ----------
+    if (bdView === 'home') return h('div', null,
+      muted('A boundary is how you look after your time, energy and body. Pick where you need it right now:'),
+      ctxToggle(),
+      tile('✅', 'Is this a real yes?', 'Five quick questions about something you\'ve been asked', () => { setBdAns({}); setBdAsk(''); setBdStep(0); setBdView('check'); }),
+      tile('📖', 'Yes and no, explained', 'Healthy yes, fawn yes, healthy no, and where they show up', () => setBdView('explain')),
+      tile('📝', 'My boundaries', (bdList.work.length + bdList.personal.length) + ' saved. Your own list for work and personal life', () => setBdView('list')),
+      safety());
+
+    // ---------- CHECK ----------
+    const QS = [
+      { key: 'ask' },
+      { key: 'body', q: 'When you picture saying yes, how does your body feel?', opts: [['open', '😌 Open or relaxed'], ['tight', '😣 Tight, heavy or dreading it'], ['unsure', '😶 Flat or not sure']] },
+      { key: 'who', q: 'Who would you mainly be doing this for?', opts: [['me', '🙋 Me. I want to'], ['care', '💗 Them, and I\'m happy to'], ['fear', '😬 To avoid conflict or being disliked'], ['guilt', '😔 Because I\'d feel guilty if I said no'], ['habit', '🔁 Habit. I always say yes, or I feel I should']] },
+      { key: 'energy', q: isWork ? 'Have you got the time, focus and energy for it at work?' : 'Have you got the time, people-energy and calm for it?', opts: [['yes', '🔋 Yes, enough'], ['some', '🪫 Only if something changes'], ['no', '🚫 No, it would cost too much']] },
+      { key: 'demand', q: 'Does it feel like a demand, something you\'re expected or told to do?', hint: 'With demand avoidance (PDA), a "no" can come from the pressure itself, not from the request.', opts: [['no', '🙂 No, it\'s an ask I could genuinely choose'], ['yes', '🌊 Yes, the pressure is what makes me want to say no'], ['unsure', '🤷 Not sure']] },
+    ];
+    if (bdView === 'check') {
+      const q = QS[bdStep];
+      return h('div', null,
+        h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 } },
+          h('button', { onClick: () => bdStep === 0 ? setBdView('home') : setBdStep(bdStep - 1), style: { background: 'transparent', border: `1px solid ${C.border}`, borderRadius: 20, padding: '6px 14px', color: C.muted, fontFamily: 'Nunito', fontSize: 13, cursor: 'pointer' } }, '← Back'),
+          h('span', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 12 } }, 'Question ' + (bdStep + 1) + ' of 5 · ' + (isWork ? '💼 Work' : '🏡 Personal'))),
+        q.key === 'ask'
+          ? h('div', null,
+              h('p', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 17, margin: '0 0 8px' } }, 'What have you been asked, or what are you thinking of agreeing to?'),
+              muted('Optional. It just helps you keep track of what you\'re deciding.'),
+              h('textarea', { value: bdAsk, onChange: e => setBdAsk(e.target.value), placeholder: isWork ? 'e.g. Cover an extra shift / take on a new project' : 'e.g. Go to the party / help with a big favour', style: { ...textareaStyle({ width: '100%', height: 90, marginBottom: 12 }) } }),
+              h('button', { onClick: () => setBdStep(1), style: { ...btn(C.blue, { width: '100%', padding: 12 }) } }, 'Next →'))
+          : h('div', null,
+              bdAsk && h('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, fontStyle: 'italic', margin: '0 0 8px' } }, 'Deciding about: ' + bdAsk),
+              h('p', { style: { color: C.text, fontFamily: 'Nunito', fontWeight: 800, fontSize: 17, margin: '0 0 6px' } }, q.q),
+              q.hint && muted(q.hint, { fontSize: 12 }),
+              q.opts.map(([val, label]) => h('button', { key: val, onClick: () => { setBdAns({ ...bdAns, [q.key]: val }); if (bdStep === 4) setBdView('result'); else setBdStep(bdStep + 1); }, style: { display: 'block', width: '100%', textAlign: 'left', background: C.card, border: `1.5px solid ${bdAns[q.key] === val ? C.blue : C.border}`, borderRadius: 14, padding: '13px 14px', marginBottom: 8, cursor: 'pointer', color: C.text, fontFamily: 'Nunito Sans', fontSize: 14 } }, label))));
+    }
+
+    // ---------- RESULT ----------
+    if (bdView === 'result') {
+      const { body, who, energy, demand } = bdAns;
+      const pressured = ['fear', 'guilt', 'habit'].includes(who);
+      let out;
+      if (energy === 'no') out = 'no';
+      else if (pressured && body === 'tight') out = 'no';
+      else if (pressured) out = 'not_yet';
+      else if (energy === 'some' || body === 'unsure' || body === 'tight') out = 'yes_if';
+      else out = 'yes';
+      const INFO = {
+        yes: { icon: '✅', title: 'A healthy yes', color: C.teal, text: 'Your body feels open, you\'re choosing it, and you\'ve got the energy. That sounds like a real yes.' },
+        yes_if: { icon: '🤝', title: 'A yes, if…', color: C.blue, text: 'You may well want this, but something needs to change first. You can say yes with a condition.' },
+        not_yet: { icon: '⏳', title: 'Not yet', color: C.yellow, text: 'Some of this might be pressure rather than what you want. Give yourself time before you answer. You\'re allowed to.' },
+        no: { icon: '🛑', title: 'A healthy no', color: C.pink, text: 'It would cost more than you have, or you\'d be saying yes to keep the peace. "No" is a complete sentence, and you don\'t owe a long reason.' },
+      }[out];
+      const SCRIPTS = {
+        work: {
+          yes: ['Yes, I can do that. I\'ll have it done by [date].', 'Happy to. Can you confirm the priority so I know what to move?'],
+          yes_if: ['Yes, if we can move the deadline to [date].', 'I can take that on if something else comes off my list.', 'Yes, if I can have the details in writing.'],
+          not_yet: ['Thanks for asking. Let me check my workload and come back to you by [time].', 'I need a little time to think. Can I reply by tomorrow?'],
+          no: ['I can\'t take that on right now. Could we look at who else could help, or move it?', 'That doesn\'t work for me. Can we look at other options?', 'No, I\'m not able to do that.'],
+        },
+        personal: {
+          yes: ['Yes, I\'d love to.', 'Yes, I can do that for you.'],
+          yes_if: ['Yes, if we keep it short.', 'I\'d love to come, but I might leave early. Is that okay?', 'Yes, if I can do it my way.'],
+          not_yet: ['Let me get back to you. I just need to check my energy first.', 'I\'m not sure yet. Can I tell you tomorrow?'],
+          no: ['Thank you for asking, but I can\'t this time.', 'I\'m going to say no. It\'s not about you, I just need the space.', 'No, that doesn\'t work for me.'],
+        },
+      }[bdCtx][out];
+      const reframeOK = demand === 'yes' && out !== 'yes';
+      return h('div', null,
+        backBtn(),
+        h('div', { style: { ...card({ marginBottom: 14, borderColor: INFO.color + '77', background: INFO.color + '10' }) } },
+          h('p', { style: { color: INFO.color, fontFamily: 'Nunito', fontWeight: 900, fontSize: 20, margin: '0 0 6px' } }, INFO.icon + ' ' + INFO.title),
+          bdAsk && h('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 12, fontStyle: 'italic', margin: '0 0 8px' } }, 'About: ' + bdAsk),
+          h('p', { style: { color: C.text, fontFamily: 'Nunito Sans', fontSize: 14, lineHeight: 1.6, margin: 0 } }, INFO.text)),
+        reframeOK && h('div', { style: { ...card({ marginBottom: 14 }) } },
+          h('p', { style: { color: C.purple, fontFamily: 'Nunito', fontWeight: 800, fontSize: 14, margin: '0 0 4px' } }, '🌊 A thought about demands'),
+          h('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.6, margin: 0 } }, 'Part of this feeling may be the pressure itself. Ask yourself: if nobody expected this, would I want to do it? If yes, see if you can make it your choice: your time, your way, in small pieces.')),
+        pressured && h('div', { style: { ...card({ marginBottom: 14 }) } },
+          h('p', { style: { color: C.pink, fontFamily: 'Nunito', fontWeight: 800, fontSize: 14, margin: '0 0 4px' } }, '💗 About saying yes to keep the peace'),
+          h('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.6, margin: 0 } }, 'Agreeing to avoid conflict or being disliked is a very common stress response, especially if you\'ve spent years masking. It isn\'t a flaw. It\'s something you can notice and slowly change at your own pace.')),
+        h('p', { style: { color: C.blue, fontFamily: 'Nunito', fontWeight: 800, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, margin: '4px 0 8px' } }, 'Things you could say (tap to copy)'),
+        SCRIPTS.map(s => h('button', { key: s, onClick: () => copy(s, 'Copied. Edit it to sound like you.'), style: { display: 'block', width: '100%', textAlign: 'left', background: C.card, border: `1px solid ${C.blue}44`, borderRadius: 12, padding: '11px 13px', marginBottom: 8, cursor: 'pointer', color: C.text, fontFamily: 'Nunito Sans', fontSize: 14, lineHeight: 1.5 } }, '“' + s + '”')),
+        h('div', { style: { display: 'flex', gap: 8, marginTop: 10 } },
+          h('button', { onClick: () => { setBdAns({}); setBdAsk(''); setBdStep(0); setBdView('check'); }, style: { ...btn(C.blue, { flex: 1, padding: 12 }) } }, '↻ Check another'),
+          h('button', { onClick: () => setBdView('list'), style: { ...btn(C.teal, { flex: 1, padding: 12 }) } }, '📝 My boundaries')),
+        muted('This is a thinking tool, not a rule. You\'re the expert on you.', { fontSize: 11, marginTop: 12 }),
+        safety());
+    }
+
+    // ---------- EXPLAIN ----------
+    if (bdView === 'explain') {
+      const blocks = [
+        ['🧱', 'What a boundary is', C.blue, 'A boundary isn\'t a wall, and it isn\'t about controlling other people. It\'s what you will do to look after your time, energy, body and values. "I\'ll leave if people shout" is a boundary. "Don\'t shout at me" is a request.'],
+        ['✅', 'A healthy yes', C.teal, 'It feels open. You chose it, you\'ve got the energy, and you wouldn\'t resent it later. You can say yes warmly.'],
+        ['😬', 'A fawn yes', C.pink, 'You agree to keep the peace, avoid conflict or stay safe, while your body says no. It\'s a common stress response (fight, flight, freeze, fawn), especially in people who have masked for years. The giveaway is often resentment, exhaustion or dread afterwards.'],
+        ['🛑', 'A healthy no', C.yellow, 'Calm and clear. It doesn\'t need a long explanation, an apology or a good excuse. It protects something that matters.'],
+        ['🌊', 'A "no" that is really overwhelm or demand avoidance', C.purple, 'Sometimes a no comes from shutdown, or from the feeling of being told what to do (PDA), not from what you actually want. Pausing and asking "would I want this if nobody expected it?" can help you tell the difference.'],
+      ];
+      const places = isWork
+        ? ['Extra tasks or shifts', 'Meetings, noise and open-plan spaces', 'Messages and being "always on"', 'Breaks and lunch', 'Feedback and being asked to explain yourself', 'Reasonable adjustments (asking for what you need)']
+        : ['Family expectations', 'Social plans and events', 'Helping with favours', 'Messages, calls and replying straight away', 'Sensory needs and recovery time', 'Online and social media'];
+      return h('div', null,
+        backBtn(),
+        blocks.map(([icon, title, color, text]) => h('div', { key: title, style: { ...card({ marginBottom: 10, borderColor: color + '55' }) } },
+          h('p', { style: { color, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 4px' } }, icon + ' ' + title),
+          h('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, lineHeight: 1.6, margin: 0 } }, text))),
+        ctxToggle(),
+        h('div', { style: { ...card({ marginBottom: 10 }) } },
+          h('p', { style: { color: C.blue, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 8px' } }, '📍 Where this comes up: ' + (isWork ? 'work' : 'personal life')),
+          places.map(x => h('p', { key: x, style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 4px' } }, '• ' + x))),
+        h('div', { style: { ...card({ marginBottom: 10 }) } },
+          h('p', { style: { color: C.teal, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 8px' } }, '🧭 Four questions to ask yourself'),
+          ['Does it feel right in my body?', 'Who am I really doing this for?', 'What will it cost me, and have I got that to spend?', 'What would I need to make it work?'].map(x => h('p', { key: x, style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 4px' } }, '• ' + x))),
+        safety());
+    }
+
+    // ---------- LIST ----------
+    const IDEAS = {
+      work: ['I don\'t check work messages after 7pm', 'I need agendas before meetings', 'I take a proper lunch break', 'I reply within 24 hours, not instantly', 'I need quiet time after back-to-back meetings', 'I ask for instructions in writing'],
+      personal: ['I can leave early without explaining', 'I don\'t have to reply straight away', 'I need a recovery day after big social events', 'I say no to things that cost more than I have', 'I don\'t discuss big topics when I\'m tired'],
+    };
+    const section = (ctx, label, color) => h('div', { key: ctx, style: { ...card({ marginBottom: 12, borderColor: color + '55' }) } },
+      h('p', { style: { color, fontFamily: 'Nunito', fontWeight: 800, fontSize: 15, margin: '0 0 8px' } }, label),
+      bdList[ctx].length === 0 && muted('Nothing here yet. Add one below, or tap an idea.', { fontSize: 12 }),
+      bdList[ctx].map((item, i) => h('div', { key: item + i, style: { display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6, background: color + '12', borderRadius: 10, padding: '8px 10px' } },
+        h('span', { style: { flex: 1, color: C.text, fontFamily: 'Nunito Sans', fontSize: 14 } }, item),
+        h('button', { onClick: () => rmB(ctx, i), 'aria-label': 'Remove', style: { background: 'transparent', border: 'none', color: C.muted, fontSize: 16, cursor: 'pointer' } }, '✕'))),
+      h('div', { style: { display: 'flex', gap: 8, marginTop: 8 } },
+        h('input', { value: bdDraft.ctx === ctx ? bdDraft.text : '', onChange: e => setBdDraft({ ctx, text: e.target.value }), onKeyDown: e => { if (e.key === 'Enter') { addB(ctx, bdDraft.text); setBdDraft({ ctx: null, text: '' }); } }, placeholder: 'Add your own…', style: { ...input({ flex: 1, margin: 0 }) } }),
+        h('button', { onClick: () => { if (bdDraft.ctx === ctx) { addB(ctx, bdDraft.text); setBdDraft({ ctx: null, text: '' }); } }, style: { ...btn(color, { padding: '8px 14px' }) } }, 'Add')),
+      IDEAS[ctx].filter(x => !bdList[ctx].includes(x)).length > 0 && h('div', { style: { marginTop: 10 } },
+        h('p', { style: { color: C.muted, fontFamily: 'Nunito', fontSize: 11, margin: '0 0 6px' } }, 'Tap to add an idea:'),
+        h('div', { style: { display: 'flex', flexWrap: 'wrap', gap: 6 } }, IDEAS[ctx].filter(x => !bdList[ctx].includes(x)).map(x => h('button', { key: x, onClick: () => addB(ctx, x), style: { background: 'transparent', border: `1px dashed ${color}88`, color, borderRadius: 16, padding: '5px 10px', fontFamily: 'Nunito Sans', fontSize: 12, cursor: 'pointer', textAlign: 'left' } }, '+ ' + x)))),
+      bdList[ctx].length > 0 && h('button', { onClick: () => copy((ctx === 'work' ? 'MY BOUNDARIES AT WORK\n' : 'MY BOUNDARIES\n') + bdList[ctx].map(x => '• ' + x).join('\n'), 'Copied. You can paste it into an email or your passport.'), style: { ...btn(color, { width: '100%', padding: 10, marginTop: 10 }) } }, '📋 Copy my ' + (ctx === 'work' ? 'work' : 'personal') + ' boundaries'));
+    return h('div', null,
+      backBtn(),
+      muted('Your own list of what you will and won\'t do. It saves to your account, so it\'s there when you need it.'),
+      isWork ? [section('work', '💼 At work', C.blue), section('personal', '🏡 In my personal life', C.teal)] : [section('personal', '🏡 In my personal life', C.teal), section('work', '💼 At work', C.blue)],
+      muted('Work boundaries can go into a reasonable adjustments request or your Workplace Passport.', { fontSize: 12 }));
+  }
+
   function renderTab(tabId) {
     const map = {
       rsd: renderRSD,
       translate: renderTranslate,
       decode: renderDecode,
       pda: renderPDA,
+      boundaries: renderBoundaries,
       tasks: renderTasks,
       braindump: renderBrainDump,
       habits: renderHabits,
@@ -3912,7 +4095,7 @@ Thank you for your support.
   // ── PHASE 1 NAV HELPERS ──────────────────────────────────────────────────
   const TOOL_GROUPS = [
     { title: 'Calm my body and brain', color: C.yellow, items: [['regulate','mood'],['regulate','sensory'],['regulate','dopamine'],['regulate','toolkit']] },
-    { title: 'When people are hard', color: C.pink, items: [['communication','rsd'],['communication','translate'],['communication','decode'],['communication','pda']] },
+    { title: 'When people are hard', color: C.pink, items: [['communication','rsd'],['communication','translate'],['communication','decode'],['communication','boundaries'],['communication','pda']] },
     { title: 'Get things out of my head', color: C.teal, items: [['mybrain','tasks'],['mybrain','braindump'],['mybrain','habits']] },
     { title: 'Explain myself', color: C.blue, items: [['aboutme','disclosure']] },
   ];
@@ -4179,7 +4362,10 @@ Thank you for your support.
         bottomNav === 'work' && React.createElement('div', null,
           React.createElement('h2', { style: { color: C.blue, fontFamily: 'Nunito', fontWeight: 900, fontSize: 22, margin: '0 0 4px' } }, '💼 Work'),
           React.createElement('p', { style: { color: C.muted, fontFamily: 'Nunito Sans', fontSize: 13, margin: '0 0 16px' } }, 'Rights, adjustments, your passport and Access to Work support'),
-          renderWork()
+          inTabView ? tabView() : React.createElement('div', null,
+            navRow('wb', '🧭', 'Boundaries at work', 'Check if a yes or no feels right, with scripts and your own list', C.blue, () => { setBdCtx('work'); setBdView('home'); navigateTo('communication', 'boundaries'); }),
+            renderWork()
+          )
         ),
 
         // ── MY STEADY ────────────────────────────────────────────────────────
